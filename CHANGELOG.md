@@ -1,3 +1,13 @@
+## Unreleased
+
+IMPROVEMENTS
+
+* Added `openstack_placement_resourceprovider_inventory_v1` resource for managing Placement resource provider inventories
+* Added `openstack_placement_resourceprovider_traits_v1` data source for reading Placement resource provider traits
+* Added `openstack_placement_resourceprovider_usages_v1` data source for reading Placement resource provider usages
+* Added `openstack_keymanager_secret_acl_v1` data source for reading Barbican secret ACLs
+* Added support for updating resource provider inventories in gophercloud
+
 ## 3.3.2 (17 July, 2025)
 
 BUG FIXES
