@@ -3,7 +3,7 @@ package openstack
 import (
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestAccNetworkingV2SubnetRoute_importBasic(t *testing.T) {
@@ -15,7 +15,7 @@ func TestAccNetworkingV2SubnetRoute_importBasic(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SubnetRouteDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SubnetRouteDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SubnetRouteCreate,

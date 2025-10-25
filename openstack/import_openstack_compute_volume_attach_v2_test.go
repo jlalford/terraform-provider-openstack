@@ -3,7 +3,7 @@ package openstack
 import (
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestAccComputeV2VolumeAttach_importBasic(t *testing.T) {
@@ -15,7 +15,7 @@ func TestAccComputeV2VolumeAttach_importBasic(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckComputeV2VolumeAttachDestroy,
+		CheckDestroy:      testAccCheckComputeV2VolumeAttachDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccComputeV2VolumeAttachBasic(),

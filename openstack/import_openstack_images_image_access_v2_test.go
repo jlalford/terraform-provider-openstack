@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccImagesImageAccessV2_importBasic(t *testing.T) {
@@ -19,7 +19,7 @@ func TestAccImagesImageAccessV2_importBasic(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckImagesImageAccessV2Destroy,
+		CheckDestroy:      testAccCheckImagesImageAccessV2Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccImagesImageAccessV2Basic(),

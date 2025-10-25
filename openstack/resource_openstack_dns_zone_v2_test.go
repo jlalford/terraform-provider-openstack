@@ -1,20 +1,22 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/dns/v2/zones"
+	"github.com/gophercloud/gophercloud/v2/openstack/dns/v2/zones"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccDNSV2Zone_basic(t *testing.T) {
 	var zone zones.Zone
-	var zoneName = fmt.Sprintf("ACPTTEST%s.com.", acctest.RandString(5))
+
+	zoneName := fmt.Sprintf("ACPTTEST%s.com.", acctest.RandString(5))
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -23,12 +25,12 @@ func TestAccDNSV2Zone_basic(t *testing.T) {
 			testAccPreCheckDNS(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckDNSV2ZoneDestroy,
+		CheckDestroy:      testAccCheckDNSV2ZoneDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccDNSV2ZoneBasic(zoneName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckDNSV2ZoneExists("openstack_dns_zone_v2.zone_1", &zone),
+					testAccCheckDNSV2ZoneExists(t.Context(), "openstack_dns_zone_v2.zone_1", &zone),
 					resource.TestCheckResourceAttr(
 						"openstack_dns_zone_v2.zone_1", "description", "a zone"),
 				),
@@ -50,7 +52,8 @@ func TestAccDNSV2Zone_basic(t *testing.T) {
 
 func TestAccDNSV2Zone_ignoreStatusCheck(t *testing.T) {
 	var zone zones.Zone
-	var zoneName = fmt.Sprintf("ACPTTEST%s.com.", acctest.RandString(5))
+
+	zoneName := fmt.Sprintf("ACPTTEST%s.com.", acctest.RandString(5))
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -59,12 +62,12 @@ func TestAccDNSV2Zone_ignoreStatusCheck(t *testing.T) {
 			testAccPreCheckDNS(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckDNSV2ZoneDestroy,
+		CheckDestroy:      testAccCheckDNSV2ZoneDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccDNSV2ZoneDisableCheck(zoneName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckDNSV2ZoneExists("openstack_dns_zone_v2.zone_1", &zone),
+					testAccCheckDNSV2ZoneExists(t.Context(), "openstack_dns_zone_v2.zone_1", &zone),
 					resource.TestCheckResourceAttr(
 						"openstack_dns_zone_v2.zone_1", "disable_status_check", "true"),
 				),
@@ -72,7 +75,7 @@ func TestAccDNSV2Zone_ignoreStatusCheck(t *testing.T) {
 			{
 				Config: testAccDNSV2ZoneBasic(zoneName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckDNSV2ZoneExists("openstack_dns_zone_v2.zone_1", &zone),
+					testAccCheckDNSV2ZoneExists(t.Context(), "openstack_dns_zone_v2.zone_1", &zone),
 					resource.TestCheckResourceAttr(
 						"openstack_dns_zone_v2.zone_1", "disable_status_check", "false"),
 				),
@@ -83,7 +86,8 @@ func TestAccDNSV2Zone_ignoreStatusCheck(t *testing.T) {
 
 func TestAccDNSV2Zone_readTTL(t *testing.T) {
 	var zone zones.Zone
-	var zoneName = fmt.Sprintf("ACPTTEST%s.com.", acctest.RandString(5))
+
+	zoneName := fmt.Sprintf("ACPTTEST%s.com.", acctest.RandString(5))
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -92,12 +96,12 @@ func TestAccDNSV2Zone_readTTL(t *testing.T) {
 			testAccPreCheckDNS(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckDNSV2ZoneDestroy,
+		CheckDestroy:      testAccCheckDNSV2ZoneDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccDNSV2ZoneReadTTL(zoneName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckDNSV2ZoneExists("openstack_dns_zone_v2.zone_1", &zone),
+					testAccCheckDNSV2ZoneExists(t.Context(), "openstack_dns_zone_v2.zone_1", &zone),
 					resource.TestCheckResourceAttr("openstack_dns_zone_v2.zone_1", "type", "PRIMARY"),
 					resource.TestMatchResourceAttr(
 						"openstack_dns_zone_v2.zone_1", "ttl", regexp.MustCompile("^[0-9]+$")),
@@ -107,28 +111,31 @@ func TestAccDNSV2Zone_readTTL(t *testing.T) {
 	})
 }
 
-func testAccCheckDNSV2ZoneDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	dnsClient, err := config.DNSV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack DNS client: %s", err)
-	}
+func testAccCheckDNSV2ZoneDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_dns_zone_v2" {
-			continue
+		dnsClient, err := config.DNSV2Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack DNS client: %w", err)
 		}
 
-		_, err := zones.Get(dnsClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("Zone still exists")
-		}
-	}
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_dns_zone_v2" {
+				continue
+			}
 
-	return nil
+			_, err := zones.Get(ctx, dnsClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return errors.New("Zone still exists")
+			}
+		}
+
+		return nil
+	}
 }
 
-func testAccCheckDNSV2ZoneExists(n string, zone *zones.Zone) resource.TestCheckFunc {
+func testAccCheckDNSV2ZoneExists(ctx context.Context, n string, zone *zones.Zone) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -136,22 +143,23 @@ func testAccCheckDNSV2ZoneExists(n string, zone *zones.Zone) resource.TestCheckF
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		dnsClient, err := config.DNSV2Client(osRegionName)
+
+		dnsClient, err := config.DNSV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack DNS client: %s", err)
+			return fmt.Errorf("Error creating OpenStack DNS client: %w", err)
 		}
 
-		found, err := zones.Get(dnsClient, rs.Primary.ID).Extract()
+		found, err := zones.Get(ctx, dnsClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Zone not found")
+			return errors.New("Zone not found")
 		}
 
 		*zone = *found

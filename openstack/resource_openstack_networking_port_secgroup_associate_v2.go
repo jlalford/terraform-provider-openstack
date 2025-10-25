@@ -5,10 +5,9 @@ import (
 	"log"
 	"strings"
 
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/ports"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 )
 
 func resourceNetworkingPortSecGroupAssociateV2() *schema.Resource {
@@ -58,9 +57,10 @@ func resourceNetworkingPortSecGroupAssociateV2() *schema.Resource {
 	}
 }
 
-func resourceNetworkingPortSecGroupAssociateV2Create(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceNetworkingPortSecGroupAssociateV2Create(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
@@ -68,7 +68,7 @@ func resourceNetworkingPortSecGroupAssociateV2Create(ctx context.Context, d *sch
 	securityGroups := expandToStringSlice(d.Get("security_group_ids").(*schema.Set).List())
 	portID := d.Get("port_id").(string)
 
-	port, err := ports.Get(networkingClient, portID).Extract()
+	port, err := ports.Get(ctx, networkingClient, portID).Extract()
 	if err != nil {
 		return diag.Errorf("Unable to get %s Port: %s", portID, err)
 	}
@@ -76,8 +76,9 @@ func resourceNetworkingPortSecGroupAssociateV2Create(ctx context.Context, d *sch
 	log.Printf("[DEBUG] Retrieved Port %s: %+v", portID, port)
 
 	var updateOpts ports.UpdateOpts
+
 	var enforce bool
-	if v, ok := d.GetOkExists("enforce"); ok {
+	if v, ok := getOkExists(d, "enforce"); ok {
 		enforce = v.(bool)
 	}
 
@@ -91,7 +92,7 @@ func resourceNetworkingPortSecGroupAssociateV2Create(ctx context.Context, d *sch
 
 	log.Printf("[DEBUG] Port Security Group Associate Options: %#v", updateOpts.SecurityGroups)
 
-	_, err = ports.Update(networkingClient, portID, updateOpts).Extract()
+	_, err = ports.Update(ctx, networkingClient, portID, updateOpts).Extract()
 	if err != nil {
 		return diag.Errorf("Error associating %s port with '%s' security groups: %s", portID, strings.Join(securityGroups, ","), err)
 	}
@@ -101,14 +102,15 @@ func resourceNetworkingPortSecGroupAssociateV2Create(ctx context.Context, d *sch
 	return resourceNetworkingPortSecGroupAssociateV2Read(ctx, d, meta)
 }
 
-func resourceNetworkingPortSecGroupAssociateV2Read(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceNetworkingPortSecGroupAssociateV2Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
 
-	port, err := ports.Get(networkingClient, d.Id()).Extract()
+	port, err := ports.Get(ctx, networkingClient, d.Id()).Extract()
 	if err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "Error fetching port security groups"))
 	}
@@ -116,7 +118,7 @@ func resourceNetworkingPortSecGroupAssociateV2Read(ctx context.Context, d *schem
 	// We can assume enforce is `false` as it is defaulted to it. If user
 	// passes `true` it will be overwritten in the if clause
 	enforce := false
-	if v, ok := d.GetOkExists("enforce"); ok {
+	if v, ok := d.GetOk("enforce"); ok {
 		enforce = v.(bool)
 	}
 
@@ -128,6 +130,7 @@ func resourceNetworkingPortSecGroupAssociateV2Read(ctx context.Context, d *schem
 		allSet := d.Get("all_security_group_ids").(*schema.Set)
 		desiredSet := d.Get("security_group_ids").(*schema.Set)
 		actualSet := allSet.Intersection(desiredSet)
+
 		if !actualSet.Equal(desiredSet) {
 			d.Set("security_group_ids", expandToStringSlice(actualSet.List()))
 		}
@@ -140,16 +143,18 @@ func resourceNetworkingPortSecGroupAssociateV2Read(ctx context.Context, d *schem
 	return nil
 }
 
-func resourceNetworkingPortSecGroupAssociateV2Update(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceNetworkingPortSecGroupAssociateV2Update(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
 
 	var updateOpts ports.UpdateOpts
+
 	var enforce bool
-	if v, ok := d.GetOkExists("enforce"); ok {
+	if v, ok := getOkExists(d, "enforce"); ok {
 		enforce = v.(bool)
 	}
 
@@ -170,7 +175,8 @@ func resourceNetworkingPortSecGroupAssociateV2Update(ctx context.Context, d *sch
 
 	if d.HasChange("security_group_ids") || d.HasChange("enforce") {
 		log.Printf("[DEBUG] Port Security Group Update Options: %#v", updateOpts.SecurityGroups)
-		_, err = ports.Update(networkingClient, d.Id(), updateOpts).Extract()
+
+		_, err = ports.Update(ctx, networkingClient, d.Id(), updateOpts).Extract()
 		if err != nil {
 			return diag.Errorf("Error updating OpenStack Neutron Port: %s", err)
 		}
@@ -179,16 +185,18 @@ func resourceNetworkingPortSecGroupAssociateV2Update(ctx context.Context, d *sch
 	return resourceNetworkingPortSecGroupAssociateV2Read(ctx, d, meta)
 }
 
-func resourceNetworkingPortSecGroupAssociateV2Delete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceNetworkingPortSecGroupAssociateV2Delete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
 
 	var updateOpts ports.UpdateOpts
+
 	var enforce bool
-	if v, ok := d.GetOkExists("enforce"); ok {
+	if v, ok := d.GetOk("enforce"); ok {
 		enforce = v.(bool)
 	}
 
@@ -207,7 +215,7 @@ func resourceNetworkingPortSecGroupAssociateV2Delete(ctx context.Context, d *sch
 
 	log.Printf("[DEBUG] Port security groups disassociation options: %#v", updateOpts.SecurityGroups)
 
-	_, err = ports.Update(networkingClient, d.Id(), updateOpts).Extract()
+	_, err = ports.Update(ctx, networkingClient, d.Id(), updateOpts).Extract()
 	if err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "Error disassociating port security groups"))
 	}

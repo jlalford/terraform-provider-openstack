@@ -1,15 +1,16 @@
 package openstack
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"net/http"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/dns/v2/zones"
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/tokens"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/dns/v2/zones"
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/tokens"
 )
 
 // ZoneCreateOpts represents the attributes used when creating a new DNS zone.
@@ -20,13 +21,13 @@ type ZoneCreateOpts struct {
 
 // ToZoneCreateMap casts a CreateOpts struct to a map.
 // It overrides zones.ToZoneCreateMap to add the ValueSpecs field.
-func (opts ZoneCreateOpts) ToZoneCreateMap() (map[string]interface{}, error) {
+func (opts ZoneCreateOpts) ToZoneCreateMap() (map[string]any, error) {
 	b, err := BuildRequest(opts, "")
 	if err != nil {
 		return nil, err
 	}
 
-	if m, ok := b[""].(map[string]interface{}); ok {
+	if m, ok := b[""].(map[string]any); ok {
 		if opts.TTL > 0 {
 			m["ttl"] = opts.TTL
 		}
@@ -37,16 +38,19 @@ func (opts ZoneCreateOpts) ToZoneCreateMap() (map[string]interface{}, error) {
 	return nil, fmt.Errorf("Expected map but got %T", b[""])
 }
 
-const headerAuthSudoTenantID string = "X-Auth-Sudo-Tenant-ID"
-const headerAuthAllProjects string = "X-Auth-All-Projects"
+const (
+	headerAuthSudoTenantID string = "X-Auth-Sudo-Tenant-ID"
+	headerAuthAllProjects  string = "X-Auth-All-Projects"
+)
 
 // dnsClientSetAuthHeaders sets auth headers for interacting with different projects.
-func dnsClientSetAuthHeader(resourceData *schema.ResourceData, dnsClient *gophercloud.ServiceClient) error {
+func dnsClientSetAuthHeader(ctx context.Context, resourceData *schema.ResourceData, dnsClient *gophercloud.ServiceClient) error {
 	// Extracting project ID from token to compare with provided one
-	project, err := getProjectFromToken(dnsClient)
+	project, err := getProjectFromToken(ctx, dnsClient)
 	if err != nil {
-		return fmt.Errorf("Error extracting project ID from token: %s", err)
+		return fmt.Errorf("Error extracting project ID from token: %w", err)
 	}
+
 	headers := make(map[string]string)
 	// If all projects need to be listed to lookup a zone, set AuthAllProjects header
 	if v, ok := resourceData.GetOk("all_projects"); ok {
@@ -76,11 +80,11 @@ func dnsClientSetAuthHeader(resourceData *schema.ResourceData, dnsClient *gopher
 	return nil
 }
 
-func dnsZoneV2RefreshFunc(dnsClient *gophercloud.ServiceClient, zoneID string) resource.StateRefreshFunc {
-	return func() (interface{}, string, error) {
-		zone, err := zones.Get(dnsClient, zoneID).Extract()
+func dnsZoneV2RefreshFunc(ctx context.Context, dnsClient *gophercloud.ServiceClient, zoneID string) retry.StateRefreshFunc {
+	return func() (any, string, error) {
+		zone, err := zones.Get(ctx, dnsClient, zoneID).Extract()
 		if err != nil {
-			if _, ok := err.(gophercloud.ErrDefault404); ok {
+			if gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
 				return zone, "DELETED", nil
 			}
 
@@ -88,16 +92,18 @@ func dnsZoneV2RefreshFunc(dnsClient *gophercloud.ServiceClient, zoneID string) r
 		}
 
 		log.Printf("[DEBUG] openstack_dns_zone_v2 %s current status: %s", zone.ID, zone.Status)
+
 		return zone, zone.Status, nil
 	}
 }
 
-func getProjectFromToken(dnsClient *gophercloud.ServiceClient) (*tokens.Project, error) {
+func getProjectFromToken(ctx context.Context, dnsClient *gophercloud.ServiceClient) (*tokens.Project, error) {
 	var (
 		project *tokens.Project
 		err     error
 	)
-	r := dnsClient.ProviderClient.GetAuthResult()
+
+	r := dnsClient.GetAuthResult()
 	switch result := r.(type) {
 	case tokens.CreateResult:
 		project, err = result.ExtractProject()
@@ -110,11 +116,13 @@ func getProjectFromToken(dnsClient *gophercloud.ServiceClient) (*tokens.Project,
 			return nil, err
 		}
 	default:
-		res := tokens.Get(dnsClient, dnsClient.ProviderClient.TokenID)
+		res := tokens.Get(ctx, dnsClient, dnsClient.TokenID)
+
 		project, err = res.ExtractProject()
 		if err != nil {
 			return nil, err
 		}
 	}
+
 	return project, nil
 }

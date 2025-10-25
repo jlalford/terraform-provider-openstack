@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccFWPolicyV2DataSource_basic(t *testing.T) {
@@ -104,7 +105,7 @@ func testAccCheckFWPolicyV2DataSourceID(n string) resource.TestCheckFunc {
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Firewall policy data source ID not set")
+			return errors.New("Firewall policy data source ID not set")
 		}
 
 		return nil
@@ -127,9 +128,9 @@ resource "openstack_fw_policy_v2" "policy_1" {
 }
 
 data "openstack_fw_policy_v2" "policy_1" {
-  name        = "${openstack_fw_policy_v2.policy_1.name}"
-  description = "${openstack_fw_policy_v2.policy_1.description}"
-  tenant_id   = "${openstack_fw_policy_v2.policy_1.tenant_id}"
+  name        = openstack_fw_policy_v2.policy_1.name
+  description = openstack_fw_policy_v2.policy_1.description
+  tenant_id   = openstack_fw_policy_v2.policy_1.tenant_id
   shared      = true
   audited     = true
 }
@@ -142,7 +143,7 @@ func testAccFWPolicyV2DataSourceName() string {
 data "openstack_fw_policy_v2" "policy_1" {
   name        = "policy_1"
   description = "My firewall policy"
-  tenant_id   = "${openstack_fw_policy_v2.policy_1.tenant_id}"
+  tenant_id   = openstack_fw_policy_v2.policy_1.tenant_id
   shared      = false
   audited     = false
 }
@@ -154,7 +155,7 @@ func testAccFWPolicyV2DataSourcePolicyID() string {
 %s
 
 data "openstack_fw_policy_v2" "policy_1" {
-  policy_id = "${openstack_fw_policy_v2.policy_1.id}"
+  policy_id = openstack_fw_policy_v2.policy_1.id
 }
 `, testAccFWPolicyV2DataSourceBasic)
 }

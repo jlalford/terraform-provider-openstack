@@ -1,20 +1,23 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/keymanager/v1/orders"
-	"github.com/gophercloud/gophercloud/openstack/keymanager/v1/secrets"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/keymanager/v1/orders"
+	"github.com/gophercloud/gophercloud/v2/openstack/keymanager/v1/secrets"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccKeyManagerOrderV1_basic(t *testing.T) {
 	var order orders.Order
+
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
@@ -22,12 +25,12 @@ func TestAccKeyManagerOrderV1_basic(t *testing.T) {
 			testAccPreCheckKeyManager(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckOrderV1Destroy,
+		CheckDestroy:      testAccCheckOrderV1Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccKeyManagerOrderV1Symmetric,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckOrderV1Exists(
+					testAccCheckOrderV1Exists(t.Context(),
 						"openstack_keymanager_order_v1.test-acc-basic", &order),
 					resource.TestCheckResourceAttrPtr("openstack_keymanager_order_v1.test-acc-basic", "type", &order.Type),
 					resource.TestCheckResourceAttrPtr("openstack_keymanager_order_v1.test-acc-basic", "meta.0.name", &order.Meta.Name),
@@ -40,34 +43,43 @@ func TestAccKeyManagerOrderV1_basic(t *testing.T) {
 	})
 }
 
-func testAccCheckOrderV1Destroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	kmClient, err := config.KeyManagerV1Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack KeyManager client: %s", err)
+func testAccCheckOrderV1Destroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
+
+		kmClient, err := config.KeyManagerV1Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack KeyManager client: %w", err)
+		}
+
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_keymanager_order_v1" {
+				continue
+			}
+
+			_, err = orders.Get(ctx, kmClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return fmt.Errorf("Order (%s) still exists", rs.Primary.ID)
+			}
+
+			if !gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
+				return err
+			}
+
+			secretRefSplit := strings.Split(rs.Primary.Attributes["secret_ref"], "/")
+			uuid := secretRefSplit[len(secretRefSplit)-1]
+			result := secrets.Delete(ctx, kmClient, uuid)
+
+			if result.ExtractErr() != nil {
+				return fmt.Errorf("Secret (%s) still exists", uuid)
+			}
+		}
+
+		return nil
 	}
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_keymanager_order_v1" {
-			continue
-		}
-		_, err = orders.Get(kmClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("Order (%s) still exists", rs.Primary.ID)
-		}
-		if _, ok := err.(gophercloud.ErrDefault404); !ok {
-			return err
-		}
-		secretRefSplit := strings.Split(rs.Primary.Attributes["secret_ref"], "/")
-		uuid := secretRefSplit[len(secretRefSplit)-1]
-		result := secrets.Delete(kmClient, uuid)
-		if result.ExtractErr() != nil {
-			return fmt.Errorf("Secret (%s) still exists", uuid)
-		}
-	}
-	return nil
 }
 
-func testAccCheckOrderV1Exists(n string, order *orders.Order) resource.TestCheckFunc {
+func testAccCheckOrderV1Exists(ctx context.Context, n string, order *orders.Order) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -75,21 +87,23 @@ func testAccCheckOrderV1Exists(n string, order *orders.Order) resource.TestCheck
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		kmClient, err := config.KeyManagerV1Client(osRegionName)
+
+		kmClient, err := config.KeyManagerV1Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack KeyManager client: %s", err)
+			return fmt.Errorf("Error creating OpenStack KeyManager client: %w", err)
 		}
 
 		var found *orders.Order
 
-		found, err = orders.Get(kmClient, rs.Primary.ID).Extract()
+		found, err = orders.Get(ctx, kmClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
+
 		*order = *found
 
 		return nil

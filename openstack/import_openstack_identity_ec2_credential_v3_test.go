@@ -3,7 +3,7 @@ package openstack
 import (
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestAccIdentityV3Ec2Credential_importBasic(t *testing.T) {
@@ -15,7 +15,7 @@ func TestAccIdentityV3Ec2Credential_importBasic(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIdentityV3Ec2CredentialDestroy,
+		CheckDestroy:      testAccCheckIdentityV3Ec2CredentialDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIdentityV3Ec2CredentialBasic,

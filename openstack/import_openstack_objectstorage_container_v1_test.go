@@ -3,7 +3,7 @@ package openstack
 import (
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestAccObjectStorageV1Container_importBasic(t *testing.T) {
@@ -11,12 +11,11 @@ func TestAccObjectStorageV1Container_importBasic(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
-			testAccPreCheck(t)
 			testAccPreCheckNonAdminOnly(t)
 			testAccPreCheckSwift(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckObjectStorageV1ContainerDestroy,
+		CheckDestroy:      testAccCheckObjectStorageV1ContainerDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccObjectStorageV1ContainerComplete,

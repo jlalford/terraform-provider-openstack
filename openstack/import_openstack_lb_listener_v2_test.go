@@ -3,7 +3,7 @@ package openstack
 import (
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestAccLBV2Listener_importBasic(t *testing.T) {
@@ -16,7 +16,7 @@ func TestAccLBV2Listener_importBasic(t *testing.T) {
 			testAccPreCheckLB(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckLBV2ListenerDestroy,
+		CheckDestroy:      testAccCheckLBV2ListenerDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccLbV2ListenerConfigBasic,
@@ -41,7 +41,7 @@ func TestAccLBV2Listener_importOctavia(t *testing.T) {
 			testAccPreCheckLB(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckLBV2ListenerDestroy,
+		CheckDestroy:      testAccCheckLBV2ListenerDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccLbV2ListenerConfigOctavia,

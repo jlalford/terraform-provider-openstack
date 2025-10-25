@@ -1,19 +1,20 @@
 package openstack
 
 import (
+	"context"
 	"crypto/md5"
+	"errors"
 	"fmt"
 	"log"
 	"os"
-	"strings"
+	"strconv"
 	"testing"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/objectstorage/v1/containers"
-	"github.com/gophercloud/gophercloud/openstack/objectstorage/v1/objects"
+	"github.com/gophercloud/gophercloud/v2/openstack/objectstorage/v1/containers"
+	"github.com/gophercloud/gophercloud/v2/openstack/objectstorage/v1/objects"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 const (
@@ -41,19 +42,18 @@ func TestAccObjectStorageV1Object_basic(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
-			testAccPreCheck(t)
 			testAccPreCheckNonAdminOnly(t)
 			testAccPreCheckSwift(t)
 		},
 		ProviderFactories: testAccProviders,
 		CheckDestroy: func(s *terraform.State) error {
-			return testAccCheckObjectStorageV1ObjectDestroy(s, "terraform/test/myfile.txt")
+			return testAccCheckObjectStorageV1ObjectDestroy(t.Context(), s, "terraform/test/myfile.txt")
 		},
 		Steps: []resource.TestStep{
 			{
 				Config: testAccObjectStorageV1ObjectBasic(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckObjectStorageV1ObjectExists(
+					testAccCheckObjectStorageV1ObjectExists(t.Context(),
 						"openstack_objectstorage_object_v1.myfile", &object),
 					testAccCheckObjectStorageV1ObjectDeleteAtMatches(deleteAt, &object),
 					resource.TestCheckResourceAttr(
@@ -102,12 +102,11 @@ func TestAccObjectStorageV1Object_basic(t *testing.T) {
 func TestAccObjectStorageV1Object_basic_check_destroy(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
-			testAccPreCheck(t)
 			testAccPreCheckSwift(t)
 		},
 		ProviderFactories: testAccProviders,
 		CheckDestroy: func(s *terraform.State) error {
-			return testAccCheckObjectStorageV1ObjectDestroy(s, "terraform/test/myfile.txt")
+			return testAccCheckObjectStorageV1ObjectDestroy(t.Context(), s, "terraform/test/myfile.txt")
 		},
 		Steps: []resource.TestStep{
 			{
@@ -122,7 +121,7 @@ func TestAccObjectStorageV1Object_basic_check_destroy(t *testing.T) {
 			{
 				Config:             testAccObjectStorageV1ObjectBasic(),
 				ExpectNonEmptyPlan: true,
-				Check:              testAccCheckObjectStorageV1DestroyContainer("tf_test_container_1", "terraform/test/myfile.txt"),
+				Check:              testAccCheckObjectStorageV1DestroyContainer(t.Context(), "tf_test_container_1", "terraform/test/myfile.txt"),
 			},
 			{
 				Config:                    testAccObjectStorageV1ObjectBasic(),
@@ -135,27 +134,32 @@ func TestAccObjectStorageV1Object_basic_check_destroy(t *testing.T) {
 
 func TestAccObjectStorageV1Object_fromSource(t *testing.T) {
 	content := []byte("foo")
-	tmpfile, err := os.CreateTemp("", "tf_test_objectstorage_object")
+
+	tmpfile, err := os.CreateTemp(t.TempDir(), "tf_test_objectstorage_object")
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
+
 	if _, err := tmpfile.Write(content); err != nil {
-		log.Fatal(err)
-	}
-	if err := tmpfile.Close(); err != nil {
+		os.Remove(tmpfile.Name())
 		log.Fatal(err)
 	}
 
+	if err := tmpfile.Close(); err != nil {
+		os.Remove(tmpfile.Name())
+		log.Fatal(err)
+	}
+
+	defer os.Remove(tmpfile.Name())
+
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
-			testAccPreCheck(t)
 			testAccPreCheckNonAdminOnly(t)
 			testAccPreCheckSwift(t)
 		},
 		ProviderFactories: testAccProviders,
 		CheckDestroy: func(s *terraform.State) error {
-			return testAccCheckObjectStorageV1ObjectDestroy(s, "terraform/test/myfile")
+			return testAccCheckObjectStorageV1ObjectDestroy(t.Context(), s, "terraform/test/myfile")
 		},
 		Steps: []resource.TestStep{
 			{
@@ -166,7 +170,7 @@ func TestAccObjectStorageV1Object_fromSource(t *testing.T) {
 					resource.TestCheckResourceAttr(
 						"openstack_objectstorage_object_v1.myfile", "content_type", "text/plain"),
 					resource.TestCheckResourceAttr(
-						"openstack_objectstorage_object_v1.myfile", "content_length", fmt.Sprintf("%v", len(content))),
+						"openstack_objectstorage_object_v1.myfile", "content_length", strconv.Itoa(len(content))),
 					resource.TestCheckResourceAttr(
 						"openstack_objectstorage_object_v1.myfile", "etag", fooMD5()),
 				),
@@ -178,13 +182,12 @@ func TestAccObjectStorageV1Object_fromSource(t *testing.T) {
 func TestAccObjectStorageV1Object_detectContentType(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
-			testAccPreCheck(t)
 			testAccPreCheckNonAdminOnly(t)
 			testAccPreCheckSwift(t)
 		},
 		ProviderFactories: testAccProviders,
 		CheckDestroy: func(s *terraform.State) error {
-			return testAccCheckObjectStorageV1ObjectDestroy(s, "terraform/test/myfile.csv")
+			return testAccCheckObjectStorageV1ObjectDestroy(t.Context(), s, "terraform/test/myfile.csv")
 		},
 		Steps: []resource.TestStep{
 			{
@@ -205,16 +208,16 @@ func TestAccObjectStorageV1Object_detectContentType(t *testing.T) {
 func TestAccObjectStorageV1Object_copyFrom(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
-			testAccPreCheck(t)
 			testAccPreCheckNonAdminOnly(t)
 			testAccPreCheckSwift(t)
 		},
 		ProviderFactories: testAccProviders,
 		CheckDestroy: func(s *terraform.State) error {
-			if err := testAccCheckObjectStorageV1ObjectDestroy(s, "terraform/test/myfile.txt"); err != nil {
+			if err := testAccCheckObjectStorageV1ObjectDestroy(t.Context(), s, "terraform/test/myfile.txt"); err != nil {
 				return err
 			}
-			return testAccCheckObjectStorageV1ObjectDestroy(s, "terraform/test/myfilecopied.txt")
+
+			return testAccCheckObjectStorageV1ObjectDestroy(t.Context(), s, "terraform/test/myfilecopied.txt")
 		},
 		Steps: []resource.TestStep{
 			{
@@ -233,21 +236,21 @@ func TestAccObjectStorageV1Object_copyFrom(t *testing.T) {
 func TestAccObjectStorageV1Object_objectManifest(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
-			testAccPreCheck(t)
 			testAccPreCheckNonAdminOnly(t)
 			testAccPreCheckSwift(t)
 		},
 		ProviderFactories: testAccProviders,
 		CheckDestroy: func(s *terraform.State) error {
-			if err := testAccCheckObjectStorageV1ObjectDestroy(s, "terraform/test.csv/part001"); err != nil {
+			if err := testAccCheckObjectStorageV1ObjectDestroy(t.Context(), s, "terraform/test.csv/part001"); err != nil {
 				return err
 			}
-			if err := testAccCheckObjectStorageV1ObjectDestroy(s, "terraform/test.csv/part002"); err != nil {
+			if err := testAccCheckObjectStorageV1ObjectDestroy(t.Context(), s, "terraform/test.csv/part002"); err != nil {
 				return err
 			}
-			if err := testAccCheckObjectStorageV1ObjectDestroy(s, "terraform/test.csv"); err != nil {
+			if err := testAccCheckObjectStorageV1ObjectDestroy(t.Context(), s, "terraform/test.csv"); err != nil {
 				return err
 			}
+
 			return nil
 		},
 		Steps: []resource.TestStep{
@@ -266,11 +269,12 @@ func TestAccObjectStorageV1Object_objectManifest(t *testing.T) {
 	})
 }
 
-func testAccCheckObjectStorageV1ObjectDestroy(s *terraform.State, objectname string) error {
+func testAccCheckObjectStorageV1ObjectDestroy(ctx context.Context, s *terraform.State, objectname string) error {
 	config := testAccProvider.Meta().(*Config)
-	objectStorageClient, err := config.ObjectStorageV1Client(osRegionName)
+
+	objectStorageClient, err := config.ObjectStorageV1Client(ctx, osRegionName)
 	if err != nil {
-		return fmt.Errorf("Error creating OpenStack object storage client: %s", err)
+		return fmt.Errorf("Error creating OpenStack object storage client: %w", err)
 	}
 
 	for _, rs := range s.RootModule().Resources {
@@ -278,16 +282,16 @@ func testAccCheckObjectStorageV1ObjectDestroy(s *terraform.State, objectname str
 			continue
 		}
 
-		_, err := objects.Get(objectStorageClient, "tf_test_container_1", objectname, &objects.GetOpts{}).Extract()
+		_, err := objects.Get(ctx, objectStorageClient, "tf_test_container_1", objectname, &objects.GetOpts{}).Extract()
 		if err == nil {
-			return fmt.Errorf("Container object still exists")
+			return errors.New("Container object still exists")
 		}
 	}
 
 	return nil
 }
 
-func testAccCheckObjectStorageV1ObjectExists(n string, object *objects.GetHeader) resource.TestCheckFunc {
+func testAccCheckObjectStorageV1ObjectExists(ctx context.Context, n string, object *objects.GetHeader) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -295,21 +299,22 @@ func testAccCheckObjectStorageV1ObjectExists(n string, object *objects.GetHeader
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		objectStorageClient, err := config.ObjectStorageV1Client(osRegionName)
+
+		objectStorageClient, err := config.ObjectStorageV1Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack object storage client: %s", err)
+			return fmt.Errorf("Error creating OpenStack object storage client: %w", err)
 		}
 
-		parts := strings.SplitN(rs.Primary.ID, "/", 2)
-		if len(parts) < 2 {
-			return fmt.Errorf("Malformed object name: %s", rs.Primary.ID)
+		container, obj, err := parsePairedIDs(rs.Primary.ID, "openstack_objectstorage_object_v1")
+		if err != nil {
+			return err
 		}
 
-		found, err := objects.Get(objectStorageClient, parts[0], parts[1], nil).Extract()
+		found, err := objects.Get(ctx, objectStorageClient, container, obj, nil).Extract()
 		if err != nil {
 			return err
 		}
@@ -321,7 +326,7 @@ func testAccCheckObjectStorageV1ObjectExists(n string, object *objects.GetHeader
 }
 
 func testAccCheckObjectStorageV1ObjectDeleteAtMatches(expected string, object *objects.GetHeader) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
+	return func(_ *terraform.State) error {
 		expectedTime, err := time.Parse(time.RFC3339, expected)
 		if err != nil {
 			return err
@@ -335,20 +340,21 @@ func testAccCheckObjectStorageV1ObjectDeleteAtMatches(expected string, object *o
 	}
 }
 
-func testAccCheckObjectStorageV1DestroyContainer(container, object string) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
+func testAccCheckObjectStorageV1DestroyContainer(ctx context.Context, container, object string) resource.TestCheckFunc {
+	return func(_ *terraform.State) error {
 		config := testAccProvider.Meta().(*Config)
-		objectStorageClient, err := config.ObjectStorageV1Client(osRegionName)
+
+		objectStorageClient, err := config.ObjectStorageV1Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack object storage client: %s", err)
+			return fmt.Errorf("Error creating OpenStack object storage client: %w", err)
 		}
 
-		_, err = objects.Delete(objectStorageClient, container, object, nil).Extract()
+		_, err = objects.Delete(ctx, objectStorageClient, container, object, nil).Extract()
 		if err != nil {
 			return err
 		}
 
-		_, err = containers.Delete(objectStorageClient, container).Extract()
+		_, err = containers.Delete(ctx, objectStorageClient, container).Extract()
 		if err != nil {
 			return err
 		}
@@ -366,7 +372,7 @@ resource "openstack_objectstorage_container_v1" "container_1" {
 
 resource "openstack_objectstorage_object_v1" "myfile" {
   name = "terraform/test/myfile.txt"
-  container_name = "${openstack_objectstorage_container_v1.container_1.name}"
+  container_name = openstack_objectstorage_container_v1.container_1.name
   content = "foo"
 
   content_disposition = "foo"
@@ -385,7 +391,7 @@ resource "openstack_objectstorage_container_v1" "container_1" {
 
 resource "openstack_objectstorage_object_v1" "myfile" {
   name = "terraform/test/myfile.csv"
-  container_name = "${openstack_objectstorage_container_v1.container_1.name}"
+  container_name = openstack_objectstorage_container_v1.container_1.name
   detect_content_type = true
   content = "foo"
   content_disposition = "foo"
@@ -404,7 +410,7 @@ resource "openstack_objectstorage_container_v1" "container_1" {
 
 resource "openstack_objectstorage_object_v1" "myfile" {
   name = "terraform/test/myfile.txt"
-  container_name = "${openstack_objectstorage_container_v1.container_1.name}"
+  container_name = openstack_objectstorage_container_v1.container_1.name
   content_type = "application/octet-stream"
   content = "foo"
   content_disposition = "foo"
@@ -422,7 +428,7 @@ resource "openstack_objectstorage_container_v1" "container_1" {
 
 resource "openstack_objectstorage_object_v1" "myfile" {
   name = "terraform/test/myfile.txt"
-  container_name = "${openstack_objectstorage_container_v1.container_1.name}"
+  container_name = openstack_objectstorage_container_v1.container_1.name
   content_type = "application/octet-stream"
   content = "foo"
   content_encoding = "utf8"
@@ -438,7 +444,7 @@ resource "openstack_objectstorage_container_v1" "container_1" {
 
 resource "openstack_objectstorage_object_v1" "myfile" {
   name = "terraform/test/myfile.txt"
-  container_name = "${openstack_objectstorage_container_v1.container_1.name}"
+  container_name = openstack_objectstorage_container_v1.container_1.name
   content_type = "application/octet-stream"
   content = "foobar"
 
@@ -452,7 +458,7 @@ resource "openstack_objectstorage_container_v1" "container_1" {
 
 resource "openstack_objectstorage_object_v1" "myfile" {
   name = "terraform/test/myfile.txt"
-  container_name = "${openstack_objectstorage_container_v1.container_1.name}"
+  container_name = openstack_objectstorage_container_v1.container_1.name
   detect_content_type = true
   source = "%s"
 }
@@ -465,13 +471,13 @@ resource "openstack_objectstorage_container_v1" "container_1" {
 
 resource "openstack_objectstorage_object_v1" "myfilesource" {
   name = "terraform/test/myfile.txt"
-  container_name = "${openstack_objectstorage_container_v1.container_1.name}"
+  container_name = openstack_objectstorage_container_v1.container_1.name
   content = "foo"
 }
 
 resource "openstack_objectstorage_object_v1" "myfilecopied" {
   name = "terraform/test/myfilecopied.txt"
-  container_name = "${openstack_objectstorage_container_v1.container_1.name}"
+  container_name = openstack_objectstorage_container_v1.container_1.name
   copy_from = "${openstack_objectstorage_container_v1.container_1.name}/${openstack_objectstorage_object_v1.myfilesource.name}"
 }
 `
@@ -483,23 +489,23 @@ resource "openstack_objectstorage_container_v1" "container_1" {
 
 resource "openstack_objectstorage_object_v1" "myfile_part1" {
   name = "terraform/test.csv/part001"
-  container_name = "${openstack_objectstorage_container_v1.container_1.name}"
+  container_name = openstack_objectstorage_container_v1.container_1.name
   content = "foo"
 }
 resource "openstack_objectstorage_object_v1" "myfile_part2" {
   name = "terraform/test.csv/part002"
-  container_name = "${openstack_objectstorage_container_v1.container_1.name}"
+  container_name = openstack_objectstorage_container_v1.container_1.name
   content = "bar"
 }
 
 resource "openstack_objectstorage_object_v1" "myfile" {
   name = "terraform/test.csv"
-  container_name = "${openstack_objectstorage_container_v1.container_1.name}"
-  object_manifest = "${format("%s/terraform/test.csv/part",openstack_objectstorage_container_v1.container_1.name)}"
+  container_name = openstack_objectstorage_container_v1.container_1.name
+  object_manifest = format("%s/terraform/test.csv/part",openstack_objectstorage_container_v1.container_1.name)
 
   metadata = {
-    race = "${openstack_objectstorage_object_v1.myfile_part1.id}"
-    condition = "${openstack_objectstorage_object_v1.myfile_part2.id}"
+    race = openstack_objectstorage_object_v1.myfile_part1.id
+    condition = openstack_objectstorage_object_v1.myfile_part2.id
   }
 }
 `

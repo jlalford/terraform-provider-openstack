@@ -1,29 +1,31 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/groups"
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/groups"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccIdentityV3Group_basic(t *testing.T) {
 	var group groups.Group
+
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIdentityV3GroupDestroy,
+		CheckDestroy:      testAccCheckIdentityV3GroupDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIdentityV3GroupBasic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3GroupExists("openstack_identity_group_v3.group_1", &group),
+					testAccCheckIdentityV3GroupExists(t.Context(), "openstack_identity_group_v3.group_1", &group),
 					resource.TestCheckResourceAttrPtr(
 						"openstack_identity_group_v3.group_1", "name", &group.Name),
 					resource.TestCheckResourceAttrPtr(
@@ -33,7 +35,7 @@ func TestAccIdentityV3Group_basic(t *testing.T) {
 			{
 				Config: testAccIdentityV3GroupUpdate,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3GroupExists("openstack_identity_group_v3.group_1", &group),
+					testAccCheckIdentityV3GroupExists(t.Context(), "openstack_identity_group_v3.group_1", &group),
 					resource.TestCheckResourceAttrPtr(
 						"openstack_identity_group_v3.group_1", "name", &group.Name),
 					resource.TestCheckResourceAttrPtr(
@@ -44,28 +46,31 @@ func TestAccIdentityV3Group_basic(t *testing.T) {
 	})
 }
 
-func testAccCheckIdentityV3GroupDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	identityClient, err := config.IdentityV3Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack identity client: %s", err)
-	}
+func testAccCheckIdentityV3GroupDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_identity_group_v3" {
-			continue
+		identityClient, err := config.IdentityV3Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack identity client: %w", err)
 		}
 
-		_, err := groups.Get(identityClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("Group still exists")
-		}
-	}
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_identity_group_v3" {
+				continue
+			}
 
-	return nil
+			_, err := groups.Get(ctx, identityClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return errors.New("Group still exists")
+			}
+		}
+
+		return nil
+	}
 }
 
-func testAccCheckIdentityV3GroupExists(n string, group *groups.Group) resource.TestCheckFunc {
+func testAccCheckIdentityV3GroupExists(ctx context.Context, n string, group *groups.Group) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -73,22 +78,23 @@ func testAccCheckIdentityV3GroupExists(n string, group *groups.Group) resource.T
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		identityClient, err := config.IdentityV3Client(osRegionName)
+
+		identityClient, err := config.IdentityV3Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack identity client: %s", err)
+			return fmt.Errorf("Error creating OpenStack identity client: %w", err)
 		}
 
-		found, err := groups.Get(identityClient, rs.Primary.ID).Extract()
+		found, err := groups.Get(ctx, identityClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Group not found")
+			return errors.New("Group not found")
 		}
 
 		*group = *found

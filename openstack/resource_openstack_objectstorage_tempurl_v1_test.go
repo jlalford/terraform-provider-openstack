@@ -1,13 +1,15 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccOpenStackObjectStorageTempurlV1_basic(t *testing.T) {
@@ -17,7 +19,6 @@ func TestAccOpenStackObjectStorageTempurlV1_basic(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
-			testAccPreCheck(t)
 			testAccPreCheckNonAdminOnly(t)
 			testAccPreCheckSwift(t)
 		},
@@ -27,7 +28,7 @@ func TestAccOpenStackObjectStorageTempurlV1_basic(t *testing.T) {
 				Config: testAccOpenStackObjectstorageTempurlV1ResourceBasic(containerName, objectName, "get", ttl),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckObjectstorageTempurlV1ResourceID("openstack_objectstorage_tempurl_v1.tempurl_1"),
-					testAccCheckObjectstorageTempurlV1Get("openstack_objectstorage_tempurl_v1.tempurl_1"),
+					testAccCheckObjectstorageTempurlV1Get(t.Context(), "openstack_objectstorage_tempurl_v1.tempurl_1"),
 					resource.TestCheckResourceAttr(
 						"openstack_objectstorage_tempurl_v1.tempurl_1", "method", "get"),
 					resource.TestCheckResourceAttr(
@@ -65,14 +66,14 @@ func testAccCheckObjectstorageTempurlV1ResourceID(n string) resource.TestCheckFu
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Endpoint resource ID not set")
+			return errors.New("Endpoint resource ID not set")
 		}
 
 		return nil
 	}
 }
 
-func testAccCheckObjectstorageTempurlV1Get(n string) resource.TestCheckFunc {
+func testAccCheckObjectstorageTempurlV1Get(ctx context.Context, n string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -80,19 +81,29 @@ func testAccCheckObjectstorageTempurlV1Get(n string) resource.TestCheckFunc {
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Endpoint resource ID not set")
+			return errors.New("Endpoint resource ID not set")
 		}
 
 		var url string
+
 		if url, ok = rs.Primary.Attributes["url"]; !ok {
-			return fmt.Errorf("Temp URL is not set")
+			return errors.New("Temp URL is not set")
 		}
 
-		resp, err := http.Get(url)
+		config := testAccProvider.Meta().(*Config)
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return fmt.Errorf("Failed to create request for tempurl: %s", url)
+		}
+
+		resp, err := config.OsClient.HTTPClient.Do(req)
 		if err != nil {
 			return fmt.Errorf("Failed to retrieve tempurl: %s", url)
 		}
+
 		defer resp.Body.Close()
+
 		data, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("Failed to read tempurl body: %s", url)
@@ -127,14 +138,14 @@ resource "openstack_objectstorage_container_v1" "container_1" {
 }
 
 resource "openstack_objectstorage_object_v1" "object_1" {
-  container_name = "${openstack_objectstorage_container_v1.container_1.name}"
+  container_name = openstack_objectstorage_container_v1.container_1.name
   name           = "%s"
   content        = "Hello, world!"
 }
 
 resource "openstack_objectstorage_tempurl_v1" "tempurl_1" {
-  object = "${openstack_objectstorage_object_v1.object_1.name}"
-  container = "${openstack_objectstorage_container_v1.container_1.name}"
+  object = openstack_objectstorage_object_v1.object_1.name
+  container = openstack_objectstorage_container_v1.container_1.name
   method = "%s"
   ttl = %d
 }

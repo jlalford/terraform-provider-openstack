@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccFWRuleV2DataSource_basic(t *testing.T) {
@@ -84,7 +85,7 @@ func testAccCheckFWRuleV2DataSourceID(n string) resource.TestCheckFunc {
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Firewall rule data source ID not set")
+			return errors.New("Firewall rule data source ID not set")
 		}
 
 		return nil
@@ -110,7 +111,7 @@ func testAccFWRuleV2DataSourceName() string {
 data "openstack_fw_rule_v2" "rule_1" {
   name                   = "rule_1"
   description            = "My firewall rule"
-  tenant_id              = "${openstack_fw_rule_v2.rule_1.tenant_id}"
+  tenant_id              = openstack_fw_rule_v2.rule_1.tenant_id
   protocol               = "TCP"
   action                 = "deny"
   ip_version             = 4
@@ -129,7 +130,7 @@ func testAccFWRuleV2DataSourceRuleID() string {
 %s
 
 data "openstack_fw_rule_v2" "rule_1" {
-  rule_id = "${openstack_fw_rule_v2.rule_1.id}"
+  rule_id = openstack_fw_rule_v2.rule_1.id
 }
 `, testAccFWRuleV2DataSourceBasic)
 }

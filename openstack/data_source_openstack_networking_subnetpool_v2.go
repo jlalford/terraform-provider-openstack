@@ -2,15 +2,14 @@ package openstack
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log"
 	"strings"
 	"time"
 
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/subnetpools"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/subnetpools"
 )
 
 func dataSourceNetworkingSubnetPoolV2() *schema.Resource {
@@ -97,12 +96,12 @@ func dataSourceNetworkingSubnetPoolV2() *schema.Resource {
 				Type:     schema.TypeInt,
 				Optional: true,
 				Computed: true,
-				ValidateFunc: func(v interface{}, k string) (ws []string, errors []error) {
+				ValidateFunc: func(v any, _ string) (ws []string, errs []error) {
 					value := v.(int)
 					if value != 4 && value != 6 {
-						errors = append(errors, fmt.Errorf(
-							"Only 4 and 6 are supported values for 'ip_version'"))
+						errs = append(errs, errors.New("Only 4 and 6 are supported values for 'ip_version'"))
 					}
+
 					return
 				},
 			},
@@ -149,9 +148,10 @@ func dataSourceNetworkingSubnetPoolV2() *schema.Resource {
 	}
 }
 
-func dataSourceNetworkingSubnetPoolV2Read(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func dataSourceNetworkingSubnetPoolV2Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
@@ -209,7 +209,7 @@ func dataSourceNetworkingSubnetPoolV2Read(ctx context.Context, d *schema.Resourc
 		listOpts.Tags = strings.Join(tags, ",")
 	}
 
-	pages, err := subnetpools.List(networkingClient, listOpts).AllPages()
+	pages, err := subnetpools.List(networkingClient, listOpts).AllPages(ctx)
 	if err != nil {
 		return diag.Errorf("Unable to retrieve openstack_networking_subnetpool_v2: %s", err)
 	}
@@ -252,9 +252,11 @@ func dataSourceNetworkingSubnetPoolV2Read(ctx context.Context, d *schema.Resourc
 	if err := d.Set("created_at", subnetPool.CreatedAt.Format(time.RFC3339)); err != nil {
 		log.Printf("[DEBUG] Unable to set openstack_networking_subnetpool_v2 created_at: %s", err)
 	}
+
 	if err := d.Set("updated_at", subnetPool.UpdatedAt.Format(time.RFC3339)); err != nil {
 		log.Printf("[DEBUG] Unable to set openstack_networking_subnetpool_v2 updated_at: %s", err)
 	}
+
 	if err := d.Set("prefixes", subnetPool.Prefixes); err != nil {
 		log.Printf("[WARN] unable to set prefixes: %s", err)
 	}

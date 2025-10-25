@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestAccOpenStackImagesV2ImageIDsDataSource_basic(t *testing.T) {
@@ -120,7 +120,7 @@ func testAccOpenStackImagesV2ImageIDsDataSourceName() string {
 %s
 
 data "openstack_images_image_ids_v2" "images_by_name" {
-	name = "${openstack_images_image_v2.image_1.name}"
+	name = openstack_images_image_v2.image_1.name
 	visibility = "private"
 }
 `, testAccOpenStackImagesV2ImageIDsDataSourceCirros)

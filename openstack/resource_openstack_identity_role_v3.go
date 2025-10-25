@@ -4,10 +4,9 @@ import (
 	"context"
 	"log"
 
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/roles"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/roles"
 )
 
 func resourceIdentityRoleV3() *schema.Resource {
@@ -42,9 +41,10 @@ func resourceIdentityRoleV3() *schema.Resource {
 	}
 }
 
-func resourceIdentityRoleV3Create(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceIdentityRoleV3Create(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	identityClient, err := config.IdentityV3Client(GetRegion(d, config))
+
+	identityClient, err := config.IdentityV3Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack identity client: %s", err)
 	}
@@ -55,7 +55,8 @@ func resourceIdentityRoleV3Create(ctx context.Context, d *schema.ResourceData, m
 	}
 
 	log.Printf("[DEBUG] openstack_identity_role_v3 create options: %#v", createOpts)
-	role, err := roles.Create(identityClient, createOpts).Extract()
+
+	role, err := roles.Create(ctx, identityClient, createOpts).Extract()
 	if err != nil {
 		return diag.Errorf("Error creating openstack_identity_role_v3: %s", err)
 	}
@@ -65,14 +66,15 @@ func resourceIdentityRoleV3Create(ctx context.Context, d *schema.ResourceData, m
 	return resourceIdentityRoleV3Read(ctx, d, meta)
 }
 
-func resourceIdentityRoleV3Read(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceIdentityRoleV3Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	identityClient, err := config.IdentityV3Client(GetRegion(d, config))
+
+	identityClient, err := config.IdentityV3Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack identity client: %s", err)
 	}
 
-	role, err := roles.Get(identityClient, d.Id()).Extract()
+	role, err := roles.Get(ctx, identityClient, d.Id()).Extract()
 	if err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "Error retrieving openstack_identity_role_v3"))
 	}
@@ -86,14 +88,16 @@ func resourceIdentityRoleV3Read(ctx context.Context, d *schema.ResourceData, met
 	return nil
 }
 
-func resourceIdentityRoleV3Update(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceIdentityRoleV3Update(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	identityClient, err := config.IdentityV3Client(GetRegion(d, config))
+
+	identityClient, err := config.IdentityV3Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack identity client: %s", err)
 	}
 
 	var hasChange bool
+
 	var updateOpts roles.UpdateOpts
 
 	if d.HasChange("name") {
@@ -102,7 +106,7 @@ func resourceIdentityRoleV3Update(ctx context.Context, d *schema.ResourceData, m
 	}
 
 	if hasChange {
-		_, err := roles.Update(identityClient, d.Id(), updateOpts).Extract()
+		_, err := roles.Update(ctx, identityClient, d.Id(), updateOpts).Extract()
 		if err != nil {
 			return diag.Errorf("Error updating openstack_identity_role_v3 %s: %s", d.Id(), err)
 		}
@@ -111,14 +115,15 @@ func resourceIdentityRoleV3Update(ctx context.Context, d *schema.ResourceData, m
 	return resourceIdentityRoleV3Read(ctx, d, meta)
 }
 
-func resourceIdentityRoleV3Delete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceIdentityRoleV3Delete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	identityClient, err := config.IdentityV3Client(GetRegion(d, config))
+
+	identityClient, err := config.IdentityV3Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack identity client: %s", err)
 	}
 
-	err = roles.Delete(identityClient, d.Id()).ExtractErr()
+	err = roles.Delete(ctx, identityClient, d.Id()).ExtractErr()
 	if err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "Error deleting openstack_identity_role_v3"))
 	}

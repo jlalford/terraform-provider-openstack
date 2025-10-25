@@ -5,10 +5,9 @@ import (
 	"log"
 	"strings"
 
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/layer3/floatingips"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/floatingips"
 )
 
 func dataSourceNetworkingFloatingIPV2() *schema.Resource {
@@ -81,9 +80,10 @@ func dataSourceNetworkingFloatingIPV2() *schema.Resource {
 	}
 }
 
-func dataSourceNetworkingFloatingIPV2Read(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func dataSourceNetworkingFloatingIPV2Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
@@ -123,7 +123,7 @@ func dataSourceNetworkingFloatingIPV2Read(ctx context.Context, d *schema.Resourc
 		listOpts.Tags = strings.Join(tags, ",")
 	}
 
-	pages, err := floatingips.List(networkingClient, listOpts).AllPages()
+	pages, err := floatingips.List(networkingClient, listOpts).AllPages(ctx)
 	if err != nil {
 		return diag.Errorf("Unable to list openstack_networking_floatingips_v2: %s", err)
 	}

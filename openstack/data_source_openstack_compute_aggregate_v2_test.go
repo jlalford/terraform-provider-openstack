@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 const testAccAggregateResource = `
@@ -32,7 +33,7 @@ resource "openstack_compute_aggregate_v2" "test2" {
 }
 `
 
-func TestAccAggregateDataSource(t *testing.T) {
+func TestAccComputeV2AggregateDataSource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheckAdminOnly(t) },
 		ProviderFactories: testAccProviders,
@@ -77,7 +78,7 @@ resource "openstack_compute_aggregate_v2" "test3" {
     `, osHypervisorEnvironment)
 }
 
-func TestAccAggregateDataSourceWithHypervisor(t *testing.T) {
+func TestAccComputeV2AggregateDataSourceWithHypervisor(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheckAdminOnly(t)
@@ -109,7 +110,7 @@ func testAccCheckComputeAggregateV2DataSourceID(n string) resource.TestCheckFunc
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Data source ID not set")
+			return errors.New("Data source ID not set")
 		}
 
 		return nil

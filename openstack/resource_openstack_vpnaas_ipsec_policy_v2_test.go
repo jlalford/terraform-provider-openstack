@@ -1,20 +1,23 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/vpnaas/ipsecpolicies"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/vpnaas/ipsecpolicies"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccIPSecPolicyVPNaaSV2_basic(t *testing.T) {
 	var policy ipsecpolicies.Policy
+
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
@@ -22,12 +25,12 @@ func TestAccIPSecPolicyVPNaaSV2_basic(t *testing.T) {
 			testAccPreCheckVPN(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIPSecPolicyV2Destroy,
+		CheckDestroy:      testAccCheckIPSecPolicyV2Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIPSecPolicyV2Basic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIPSecPolicyV2Exists(
+					testAccCheckIPSecPolicyV2Exists(t.Context(),
 						"openstack_vpnaas_ipsec_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttrPtr("openstack_vpnaas_ipsec_policy_v2.policy_1", "name", &policy.Name),
 					resource.TestCheckResourceAttrPtr("openstack_vpnaas_ipsec_policy_v2.policy_1", "description", &policy.Description),
@@ -45,6 +48,7 @@ func TestAccIPSecPolicyVPNaaSV2_basic(t *testing.T) {
 
 func TestAccIPSecPolicyVPNaaSV2_withLifetime(t *testing.T) {
 	var policy ipsecpolicies.Policy
+
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
@@ -52,14 +56,14 @@ func TestAccIPSecPolicyVPNaaSV2_withLifetime(t *testing.T) {
 			testAccPreCheckVPN(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIPSecPolicyV2Destroy,
+		CheckDestroy:      testAccCheckIPSecPolicyV2Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIPSecPolicyV2WithLifetime,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIPSecPolicyV2Exists(
+					testAccCheckIPSecPolicyV2Exists(t.Context(),
 						"openstack_vpnaas_ipsec_policy_v2.policy_1", &policy),
-					testAccCheckLifetime("openstack_vpnaas_ipsec_policy_v2.policy_1", &policy.Lifetime.Units, &policy.Lifetime.Value),
+					testAccCheckLifetime(t, "openstack_vpnaas_ipsec_policy_v2.policy_1", &policy.Lifetime.Units, &policy.Lifetime.Value),
 				),
 			},
 		},
@@ -68,6 +72,7 @@ func TestAccIPSecPolicyVPNaaSV2_withLifetime(t *testing.T) {
 
 func TestAccIPSecPolicyVPNaaSV2_Update(t *testing.T) {
 	var policy ipsecpolicies.Policy
+
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
@@ -75,12 +80,12 @@ func TestAccIPSecPolicyVPNaaSV2_Update(t *testing.T) {
 			testAccPreCheckVPN(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIPSecPolicyV2Destroy,
+		CheckDestroy:      testAccCheckIPSecPolicyV2Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIPSecPolicyV2Basic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIPSecPolicyV2Exists(
+					testAccCheckIPSecPolicyV2Exists(t.Context(),
 						"openstack_vpnaas_ipsec_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttrPtr("openstack_vpnaas_ipsec_policy_v2.policy_1", "name", &policy.Name),
 				),
@@ -88,7 +93,7 @@ func TestAccIPSecPolicyVPNaaSV2_Update(t *testing.T) {
 			{
 				Config: testAccIPSecPolicyV2Update,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIPSecPolicyV2Exists(
+					testAccCheckIPSecPolicyV2Exists(t.Context(),
 						"openstack_vpnaas_ipsec_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttrPtr("openstack_vpnaas_ipsec_policy_v2.policy_1", "name", &policy.Name),
 				),
@@ -99,6 +104,7 @@ func TestAccIPSecPolicyVPNaaSV2_Update(t *testing.T) {
 
 func TestAccIPSecPolicyVPNaaSV2_withLifetimeUpdate(t *testing.T) {
 	var policy ipsecpolicies.Policy
+
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
@@ -106,14 +112,14 @@ func TestAccIPSecPolicyVPNaaSV2_withLifetimeUpdate(t *testing.T) {
 			testAccPreCheckVPN(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIPSecPolicyV2Destroy,
+		CheckDestroy:      testAccCheckIPSecPolicyV2Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIPSecPolicyV2WithLifetime,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIPSecPolicyV2Exists(
+					testAccCheckIPSecPolicyV2Exists(t.Context(),
 						"openstack_vpnaas_ipsec_policy_v2.policy_1", &policy),
-					testAccCheckLifetime("openstack_vpnaas_ipsec_policy_v2.policy_1", &policy.Lifetime.Units, &policy.Lifetime.Value),
+					testAccCheckLifetime(t, "openstack_vpnaas_ipsec_policy_v2.policy_1", &policy.Lifetime.Units, &policy.Lifetime.Value),
 					resource.TestCheckResourceAttrPtr("openstack_vpnaas_ipsec_policy_v2.policy_1", "auth_algorithm", &policy.AuthAlgorithm),
 					resource.TestCheckResourceAttrPtr("openstack_vpnaas_ipsec_policy_v2.policy_1", "pfs", &policy.PFS),
 				),
@@ -121,37 +127,44 @@ func TestAccIPSecPolicyVPNaaSV2_withLifetimeUpdate(t *testing.T) {
 			{
 				Config: testAccIPSecPolicyV2WithLifetimeUpdate,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIPSecPolicyV2Exists(
+					testAccCheckIPSecPolicyV2Exists(t.Context(),
 						"openstack_vpnaas_ipsec_policy_v2.policy_1", &policy),
-					testAccCheckLifetime("openstack_vpnaas_ipsec_policy_v2.policy_1", &policy.Lifetime.Units, &policy.Lifetime.Value),
+					testAccCheckLifetime(t, "openstack_vpnaas_ipsec_policy_v2.policy_1", &policy.Lifetime.Units, &policy.Lifetime.Value),
 				),
 			},
 		},
 	})
 }
 
-func testAccCheckIPSecPolicyV2Destroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	networkingClient, err := config.NetworkingV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack networking client: %s", err)
+func testAccCheckIPSecPolicyV2Destroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
+
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
+		}
+
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_vpnaas_ipsec_policy_v2" {
+				continue
+			}
+
+			_, err = ipsecpolicies.Get(ctx, networkingClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return fmt.Errorf("IPSec policy (%s) still exists", rs.Primary.ID)
+			}
+
+			if !gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
+				return err
+			}
+		}
+
+		return nil
 	}
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_vpnaas_ipsec_policy_v2" {
-			continue
-		}
-		_, err = ipsecpolicies.Get(networkingClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("IPSec policy (%s) still exists", rs.Primary.ID)
-		}
-		if _, ok := err.(gophercloud.ErrDefault404); !ok {
-			return err
-		}
-	}
-	return nil
 }
 
-func testAccCheckIPSecPolicyV2Exists(n string, policy *ipsecpolicies.Policy) resource.TestCheckFunc {
+func testAccCheckIPSecPolicyV2Exists(ctx context.Context, n string, policy *ipsecpolicies.Policy) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -159,26 +172,28 @@ func testAccCheckIPSecPolicyV2Exists(n string, policy *ipsecpolicies.Policy) res
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		networkingClient, err := config.NetworkingV2Client(osRegionName)
+
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack networking client: %s", err)
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
 		}
 
-		found, err := ipsecpolicies.Get(networkingClient, rs.Primary.ID).Extract()
+		found, err := ipsecpolicies.Get(ctx, networkingClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
+
 		*policy = *found
 
 		return nil
 	}
 }
 
-func testAccCheckLifetime(n string, unit *string, value *int) resource.TestCheckFunc {
+func testAccCheckLifetime(t *testing.T, n string, unit *string, value *int) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -188,7 +203,7 @@ func testAccCheckLifetime(n string, unit *string, value *int) resource.TestCheck
 		// [DEBUG] key: lifetime.452086442.value value: 1200
 		// [DEBUG] key: lifetime.# value: 1
 		for k, v := range rs.Primary.Attributes {
-			println("[DEBUG] key:", k, "value:", v)
+			t.Logf("[DEBUG] key: %s value: %s", k, v)
 			// Do one check for each time a key like "lifetime.<number>.units" is seen.
 			// If more than one exists they apparently must all have the same values.
 			if strings.HasPrefix(k, "lifetime.") && k[9] >= '0' && k[9] <= '9' && strings.HasSuffix(k, ".units") {
@@ -197,11 +212,12 @@ func testAccCheckLifetime(n string, unit *string, value *int) resource.TestCheck
 				base := k[:index]
 				expectedValue := rs.Primary.Attributes[base+".value"]
 				expectedUnit := rs.Primary.Attributes[k]
-				println("[DEBUG] expectedValue:", expectedValue, "expectedUnit:", expectedUnit)
+				t.Logf("[DEBUG] expectedValue: %s expectedUnit: %s", expectedValue, expectedUnit)
 
 				if expectedUnit != *unit {
 					return fmt.Errorf("Expected lifetime unit %v but found %v", expectedUnit, *unit)
 				}
+
 				if expectedValue != strconv.Itoa(*value) {
 					return fmt.Errorf("Expected lifetime value %v but found %v", expectedValue, *value)
 				}

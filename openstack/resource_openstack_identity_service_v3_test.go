@@ -1,20 +1,23 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/services"
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/services"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccIdentityV3Service_basic(t *testing.T) {
 	var name, description string
+
 	var service services.Service
-	var serviceName = fmt.Sprintf("ACCPTTEST-%s", acctest.RandString(5))
+
+	serviceName := "ACCPTTEST-" + acctest.RandString(5)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -22,12 +25,12 @@ func TestAccIdentityV3Service_basic(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIdentityV3ServiceDestroy,
+		CheckDestroy:      testAccCheckIdentityV3ServiceDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIdentityV3ServiceBasic(serviceName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3ServiceExists("openstack_identity_service_v3.service_1", &service, &name, &description),
+					testAccCheckIdentityV3ServiceExists(t.Context(), "openstack_identity_service_v3.service_1", &service, &name, &description),
 					resource.TestCheckResourceAttrPtr(
 						"openstack_identity_service_v3.service_1", "name", &name),
 					resource.TestCheckResourceAttr(
@@ -41,7 +44,7 @@ func TestAccIdentityV3Service_basic(t *testing.T) {
 			{
 				Config: testAccIdentityV3ServiceUpdate(serviceName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3ServiceExists("openstack_identity_service_v3.service_1", &service, &name, &description),
+					testAccCheckIdentityV3ServiceExists(t.Context(), "openstack_identity_service_v3.service_1", &service, &name, &description),
 					resource.TestCheckResourceAttrPtr(
 						"openstack_identity_service_v3.service_1", "name", &name),
 					resource.TestCheckResourceAttr(
@@ -56,28 +59,31 @@ func TestAccIdentityV3Service_basic(t *testing.T) {
 	})
 }
 
-func testAccCheckIdentityV3ServiceDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	identityClient, err := config.IdentityV3Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack identity client: %s", err)
-	}
+func testAccCheckIdentityV3ServiceDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_identity_service_v3" {
-			continue
+		identityClient, err := config.IdentityV3Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack identity client: %w", err)
 		}
 
-		_, err := services.Get(identityClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("Service still exists")
-		}
-	}
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_identity_service_v3" {
+				continue
+			}
 
-	return nil
+			_, err := services.Get(ctx, identityClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return errors.New("Service still exists")
+			}
+		}
+
+		return nil
+	}
 }
 
-func testAccCheckIdentityV3ServiceExists(n string, service *services.Service, name *string, description *string) resource.TestCheckFunc {
+func testAccCheckIdentityV3ServiceExists(ctx context.Context, n string, service *services.Service, name *string, description *string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -85,22 +91,23 @@ func testAccCheckIdentityV3ServiceExists(n string, service *services.Service, na
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		identityClient, err := config.IdentityV3Client(osRegionName)
+
+		identityClient, err := config.IdentityV3Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack identity client: %s", err)
+			return fmt.Errorf("Error creating OpenStack identity client: %w", err)
 		}
 
-		found, err := services.Get(identityClient, rs.Primary.ID).Extract()
+		found, err := services.Get(ctx, identityClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Service not found")
+			return errors.New("Service not found")
 		}
 
 		if v, ok := found.Extra["name"]; ok {

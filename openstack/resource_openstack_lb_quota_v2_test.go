@@ -3,9 +3,8 @@ package openstack
 import (
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/projects"
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/projects"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestAccLBQuotaV2_basic(t *testing.T) {
@@ -18,12 +17,12 @@ func TestAccLBQuotaV2_basic(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIdentityV3ProjectDestroy,
+		CheckDestroy:      testAccCheckIdentityV3ProjectDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccLBQuotaV2Basic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3ProjectExists("openstack_identity_project_v3.project_1", &project),
+					testAccCheckIdentityV3ProjectExists(t.Context(), "openstack_identity_project_v3.project_1", &project),
 					resource.TestCheckResourceAttr(
 						"openstack_lb_quota_v2.quota_1", "loadbalancer", "1"),
 					resource.TestCheckResourceAttr(
@@ -43,7 +42,7 @@ func TestAccLBQuotaV2_basic(t *testing.T) {
 			{
 				Config: testAccLBQuotaV2Update1,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3ProjectExists("openstack_identity_project_v3.project_1", &project),
+					testAccCheckIdentityV3ProjectExists(t.Context(), "openstack_identity_project_v3.project_1", &project),
 					resource.TestCheckResourceAttr(
 						"openstack_lb_quota_v2.quota_1", "loadbalancer", "6"),
 					resource.TestCheckResourceAttr(
@@ -63,7 +62,7 @@ func TestAccLBQuotaV2_basic(t *testing.T) {
 			{
 				Config: testAccLBQuotaV2Update2,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3ProjectExists("openstack_identity_project_v3.project_1", &project),
+					testAccCheckIdentityV3ProjectExists(t.Context(), "openstack_identity_project_v3.project_1", &project),
 					resource.TestCheckResourceAttr(
 						"openstack_lb_quota_v2.quota_1", "loadbalancer", "11"),
 					resource.TestCheckResourceAttr(
@@ -90,7 +89,7 @@ resource "openstack_identity_project_v3" "project_1" {
 }
 
 resource "openstack_lb_quota_v2" "quota_1" {
-  project_id          = "${openstack_identity_project_v3.project_1.id}"
+  project_id          = openstack_identity_project_v3.project_1.id
   loadbalancer        = 1
   listener            = 2
   member              = 3
@@ -107,7 +106,7 @@ resource "openstack_identity_project_v3" "project_1" {
 }
 
 resource "openstack_lb_quota_v2" "quota_1" {
-  project_id          = "${openstack_identity_project_v3.project_1.id}"
+  project_id          = openstack_identity_project_v3.project_1.id
   loadbalancer        = 6
   listener            = 7
   member              = 8
@@ -124,7 +123,7 @@ resource "openstack_identity_project_v3" "project_1" {
 }
 
 resource "openstack_lb_quota_v2" "quota_1" {
-  project_id          = "${openstack_identity_project_v3.project_1.id}"
+  project_id          = openstack_identity_project_v3.project_1.id
   loadbalancer        = 11
   listener            = 12
   member              = 13

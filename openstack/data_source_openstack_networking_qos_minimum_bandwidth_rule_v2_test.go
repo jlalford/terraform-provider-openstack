@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccNetworkingV2QoSMinimumBandwidthRuleDataSource_basic(t *testing.T) {
@@ -13,7 +14,6 @@ func TestAccNetworkingV2QoSMinimumBandwidthRuleDataSource_basic(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckAdminOnly(t)
-			testAccSkipReleasesBelow(t, "stable/yoga")
 		},
 		ProviderFactories: testAccProviders,
 		Steps: []resource.TestStep{
@@ -40,7 +40,7 @@ func testAccCheckNetworkingQoSMinimumBandwidthRuleV2DataSourceID(n string) resou
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("QoS minimum bw data source ID not set")
+			return errors.New("QoS minimum bw data source ID not set")
 		}
 
 		return nil
@@ -53,7 +53,7 @@ resource "openstack_networking_qos_policy_v2" "qos_policy_1" {
 }
 
 resource "openstack_networking_qos_minimum_bandwidth_rule_v2" "min_bw_rule_1" {
-  qos_policy_id  = "${openstack_networking_qos_policy_v2.qos_policy_1.id}"
+  qos_policy_id  = openstack_networking_qos_policy_v2.qos_policy_1.id
   min_kbps       = 3000
 }
 `
@@ -62,8 +62,8 @@ func testAccOpenStackNetworkingQoSMinimumBandwidthRuleV2DataSourceBasic() string
 	return fmt.Sprintf(`
 %s
 data "openstack_networking_qos_minimum_bandwidth_rule_v2" "min_bw_rule_1" {
-  qos_policy_id = "${openstack_networking_qos_policy_v2.qos_policy_1.id}"
-  min_kbps      = "${openstack_networking_qos_minimum_bandwidth_rule_v2.min_bw_rule_1.min_kbps}"
+  qos_policy_id = openstack_networking_qos_policy_v2.qos_policy_1.id
+  min_kbps      = openstack_networking_qos_minimum_bandwidth_rule_v2.min_bw_rule_1.min_kbps
 }
 `, testAccNetworkingV2QoSMinimumBandwidthRuleDataSource)
 }

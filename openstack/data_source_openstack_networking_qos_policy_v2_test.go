@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccNetworkingV2QoSPolicyDataSource_basic(t *testing.T) {
@@ -13,7 +14,6 @@ func TestAccNetworkingV2QoSPolicyDataSource_basic(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckAdminOnly(t)
-			testAccSkipReleasesBelow(t, "stable/yoga")
 		},
 		ProviderFactories: testAccProviders,
 		Steps: []resource.TestStep{
@@ -39,7 +39,6 @@ func TestAccNetworkingV2QoSPolicyDataSource_description(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckAdminOnly(t)
-			testAccSkipReleasesBelow(t, "stable/yoga")
 		},
 		ProviderFactories: testAccProviders,
 		Steps: []resource.TestStep{
@@ -68,7 +67,7 @@ func testAccCheckNetworkingQoSPolicyV2DataSourceID(n string) resource.TestCheckF
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("QoS policy data source ID not set")
+			return errors.New("QoS policy data source ID not set")
 		}
 
 		return nil
@@ -87,7 +86,7 @@ func testAccOpenStackNetworkingQoSPolicyV2DataSourceBasic() string {
 %s
 
 data "openstack_networking_qos_policy_v2" "qos_policy_1" {
-  name = "${openstack_networking_qos_policy_v2.qos_policy_1.name}"
+  name = openstack_networking_qos_policy_v2.qos_policy_1.name
 }
 `, testAccNetworkingV2QoSPolicyDataSource)
 }
@@ -97,7 +96,7 @@ func testAccOpenStackNetworkingQoSPolicyV2DataSourceDescription() string {
 %s
 
 data "openstack_networking_qos_policy_v2" "qos_policy_1" {
-  description = "${openstack_networking_qos_policy_v2.qos_policy_1.description}"
+  description = openstack_networking_qos_policy_v2.qos_policy_1.description
 }
 `, testAccNetworkingV2QoSPolicyDataSource)
 }

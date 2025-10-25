@@ -1,18 +1,21 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/vpnaas/ikepolicies"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/vpnaas/ikepolicies"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccIKEPolicyVPNaaSV2_basic(t *testing.T) {
 	var policy ikepolicies.Policy
+
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
@@ -20,12 +23,12 @@ func TestAccIKEPolicyVPNaaSV2_basic(t *testing.T) {
 			testAccPreCheckVPN(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIKEPolicyV2Destroy,
+		CheckDestroy:      testAccCheckIKEPolicyV2Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIKEPolicyV2Basic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIKEPolicyV2Exists(
+					testAccCheckIKEPolicyV2Exists(t.Context(),
 						"openstack_vpnaas_ike_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttrPtr("openstack_vpnaas_ike_policy_v2.policy_1", "name", &policy.Name),
 					resource.TestCheckResourceAttrPtr("openstack_vpnaas_ike_policy_v2.policy_1", "description", &policy.Description),
@@ -38,6 +41,7 @@ func TestAccIKEPolicyVPNaaSV2_basic(t *testing.T) {
 
 func TestAccIKEPolicyVPNaaSV2_withLifetime(t *testing.T) {
 	var policy ikepolicies.Policy
+
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
@@ -45,14 +49,14 @@ func TestAccIKEPolicyVPNaaSV2_withLifetime(t *testing.T) {
 			testAccPreCheckVPN(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIKEPolicyV2Destroy,
+		CheckDestroy:      testAccCheckIKEPolicyV2Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIKEPolicyV2WithLifetime,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIKEPolicyV2Exists(
+					testAccCheckIKEPolicyV2Exists(t.Context(),
 						"openstack_vpnaas_ike_policy_v2.policy_1", &policy),
-					//testAccCheckLifetime("openstack_vpnaas_ike_policy_v2.policy_1", &policy.Lifetime.Units, &policy.Lifetime.Value),
+					// testAccCheckLifetime("openstack_vpnaas_ike_policy_v2.policy_1", &policy.Lifetime.Units, &policy.Lifetime.Value),
 				),
 			},
 		},
@@ -61,6 +65,7 @@ func TestAccIKEPolicyVPNaaSV2_withLifetime(t *testing.T) {
 
 func TestAccIKEPolicyVPNaaSV2_Update(t *testing.T) {
 	var policy ikepolicies.Policy
+
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
@@ -68,12 +73,12 @@ func TestAccIKEPolicyVPNaaSV2_Update(t *testing.T) {
 			testAccPreCheckVPN(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIKEPolicyV2Destroy,
+		CheckDestroy:      testAccCheckIKEPolicyV2Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIKEPolicyV2Basic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIKEPolicyV2Exists(
+					testAccCheckIKEPolicyV2Exists(t.Context(),
 						"openstack_vpnaas_ike_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttrPtr("openstack_vpnaas_ike_policy_v2.policy_1", "name", &policy.Name),
 				),
@@ -81,7 +86,7 @@ func TestAccIKEPolicyVPNaaSV2_Update(t *testing.T) {
 			{
 				Config: testAccIKEPolicyV2Update,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIKEPolicyV2Exists(
+					testAccCheckIKEPolicyV2Exists(t.Context(),
 						"openstack_vpnaas_ike_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttrPtr("openstack_vpnaas_ike_policy_v2.policy_1", "name", &policy.Name),
 				),
@@ -92,6 +97,7 @@ func TestAccIKEPolicyVPNaaSV2_Update(t *testing.T) {
 
 func TestAccIKEPolicyVPNaaSV2_withLifetimeUpdate(t *testing.T) {
 	var policy ikepolicies.Policy
+
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
@@ -99,14 +105,14 @@ func TestAccIKEPolicyVPNaaSV2_withLifetimeUpdate(t *testing.T) {
 			testAccPreCheckVPN(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIKEPolicyV2Destroy,
+		CheckDestroy:      testAccCheckIKEPolicyV2Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIKEPolicyV2WithLifetime,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIKEPolicyV2Exists(
+					testAccCheckIKEPolicyV2Exists(t.Context(),
 						"openstack_vpnaas_ike_policy_v2.policy_1", &policy),
-					//testAccCheckLifetime("openstack_vpnaas_ike_policy_v2.policy_1", &policy.Lifetime.Units, &policy.Lifetime.Value),
+					// testAccCheckLifetime("openstack_vpnaas_ike_policy_v2.policy_1", &policy.Lifetime.Units, &policy.Lifetime.Value),
 					resource.TestCheckResourceAttrPtr("openstack_vpnaas_ike_policy_v2.policy_1", "auth_algorithm", &policy.AuthAlgorithm),
 					resource.TestCheckResourceAttrPtr("openstack_vpnaas_ike_policy_v2.policy_1", "pfs", &policy.PFS),
 				),
@@ -114,37 +120,44 @@ func TestAccIKEPolicyVPNaaSV2_withLifetimeUpdate(t *testing.T) {
 			{
 				Config: testAccIKEPolicyV2WithLifetimeUpdate,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIKEPolicyV2Exists(
+					testAccCheckIKEPolicyV2Exists(t.Context(),
 						"openstack_vpnaas_ike_policy_v2.policy_1", &policy),
-					//testAccCheckLifetime("openstack_vpnaas_ike_policy_v2.policy_1", &policy.Lifetime.Units, &policy.Lifetime.Value),
+					// testAccCheckLifetime("openstack_vpnaas_ike_policy_v2.policy_1", &policy.Lifetime.Units, &policy.Lifetime.Value),
 				),
 			},
 		},
 	})
 }
 
-func testAccCheckIKEPolicyV2Destroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	networkingClient, err := config.NetworkingV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack networking client: %s", err)
+func testAccCheckIKEPolicyV2Destroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
+
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
+		}
+
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_vpnaas_ike_policy_v2" {
+				continue
+			}
+
+			_, err = ikepolicies.Get(ctx, networkingClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return fmt.Errorf("IKE policy (%s) still exists", rs.Primary.ID)
+			}
+
+			if !gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
+				return err
+			}
+		}
+
+		return nil
 	}
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_vpnaas_ike_policy_v2" {
-			continue
-		}
-		_, err = ikepolicies.Get(networkingClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("IKE policy (%s) still exists", rs.Primary.ID)
-		}
-		if _, ok := err.(gophercloud.ErrDefault404); !ok {
-			return err
-		}
-	}
-	return nil
 }
 
-func testAccCheckIKEPolicyV2Exists(n string, policy *ikepolicies.Policy) resource.TestCheckFunc {
+func testAccCheckIKEPolicyV2Exists(ctx context.Context, n string, policy *ikepolicies.Policy) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -152,19 +165,21 @@ func testAccCheckIKEPolicyV2Exists(n string, policy *ikepolicies.Policy) resourc
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		networkingClient, err := config.NetworkingV2Client(osRegionName)
+
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack networking client: %s", err)
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
 		}
 
-		found, err := ikepolicies.Get(networkingClient, rs.Primary.ID).Extract()
+		found, err := ikepolicies.Get(ctx, networkingClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
+
 		*policy = *found
 
 		return nil

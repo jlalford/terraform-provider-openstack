@@ -1,15 +1,17 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/fwaas_v2/policies"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/fwaas_v2/policies"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccFWPolicyV2_basic(t *testing.T) {
@@ -22,12 +24,12 @@ func TestAccFWPolicyV2_basic(t *testing.T) {
 			testAccPreCheckFW(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckFWPolicyV2Destroy,
+		CheckDestroy:      testAccCheckFWPolicyV2Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccFWPolicyV2Basic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckFWPolicyV2Exists(
+					testAccCheckFWPolicyV2Exists(t.Context(),
 						"openstack_fw_policy_v2.policy_1", &policy),
 				),
 			},
@@ -45,12 +47,12 @@ func TestAccFWPolicyV2_shared(t *testing.T) {
 			testAccPreCheckFW(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckFWPolicyV2Destroy,
+		CheckDestroy:      testAccCheckFWPolicyV2Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccFWPolicyV2Shared,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckFWPolicyV2Exists(
+					testAccCheckFWPolicyV2Exists(t.Context(),
 						"openstack_fw_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttr(
 						"openstack_fw_policy_v2.policy_1", "shared", "true"),
@@ -70,12 +72,12 @@ func TestAccFWPolicyV2_addRules(t *testing.T) {
 			testAccPreCheckFW(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckFWPolicyV2Destroy,
+		CheckDestroy:      testAccCheckFWPolicyV2Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccFWPolicyV2Basic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckFWPolicyV2Exists(
+					testAccCheckFWPolicyV2Exists(t.Context(),
 						"openstack_fw_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttr(
 						"openstack_fw_policy_v2.policy_1", "rules.#", "0"),
@@ -84,7 +86,7 @@ func TestAccFWPolicyV2_addRules(t *testing.T) {
 			{
 				Config: testAccFWPolicyV2AddRules,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckFWPolicyV2Exists(
+					testAccCheckFWPolicyV2Exists(t.Context(),
 						"openstack_fw_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttr(
 						"openstack_fw_policy_v2.policy_1", "rules.#", "2"),
@@ -104,12 +106,12 @@ func TestAccFWPolicyV2_clearFields(t *testing.T) {
 			testAccPreCheckFW(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckFWPolicyV2Destroy,
+		CheckDestroy:      testAccCheckFWPolicyV2Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccFWPolicyV2Basic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckFWPolicyV2Exists(
+					testAccCheckFWPolicyV2Exists(t.Context(),
 						"openstack_fw_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttr(
 						"openstack_fw_policy_v2.policy_1", "name", ""),
@@ -120,7 +122,7 @@ func TestAccFWPolicyV2_clearFields(t *testing.T) {
 			{
 				Config: testAccFWPolicyV2FillOutFields,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckFWPolicyV2Exists(
+					testAccCheckFWPolicyV2Exists(t.Context(),
 						"openstack_fw_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttr(
 						"openstack_fw_policy_v2.policy_1", "name", "policy_1"),
@@ -131,7 +133,7 @@ func TestAccFWPolicyV2_clearFields(t *testing.T) {
 			{
 				Config: testAccFWPolicyV2ClearFields,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckFWPolicyV2Exists(
+					testAccCheckFWPolicyV2Exists(t.Context(),
 						"openstack_fw_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttr(
 						"openstack_fw_policy_v2.policy_1", "name", ""),
@@ -153,12 +155,12 @@ func TestAccFWPolicyV2_deleteRules(t *testing.T) {
 			testAccPreCheckFW(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckFWPolicyV2Destroy,
+		CheckDestroy:      testAccCheckFWPolicyV2Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccFWPolicyV2AddRules,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckFWPolicyV2Exists(
+					testAccCheckFWPolicyV2Exists(t.Context(),
 						"openstack_fw_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttr(
 						"openstack_fw_policy_v2.policy_1", "rules.#", "2"),
@@ -167,7 +169,7 @@ func TestAccFWPolicyV2_deleteRules(t *testing.T) {
 			{
 				Config: testAccFWPolicyV2DeleteRules,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckFWPolicyV2Exists(
+					testAccCheckFWPolicyV2Exists(t.Context(),
 						"openstack_fw_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttr(
 						"openstack_fw_policy_v2.policy_1", "rules.#", "1"),
@@ -176,7 +178,7 @@ func TestAccFWPolicyV2_deleteRules(t *testing.T) {
 			{
 				Config: testAccFWPolicyV2Basic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckFWPolicyV2Exists(
+					testAccCheckFWPolicyV2Exists(t.Context(),
 						"openstack_fw_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttr(
 						"openstack_fw_policy_v2.policy_1", "rules.#", "0"),
@@ -196,12 +198,12 @@ func TestAccFWPolicyV2_rulesOrder(t *testing.T) {
 			testAccPreCheckFW(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckFWPolicyV2Destroy,
+		CheckDestroy:      testAccCheckFWPolicyV2Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccFWPolicyV2RulesOrderBasic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckFWPolicyV2Exists("openstack_fw_policy_v2.policy_1", &policy),
+					testAccCheckFWPolicyV2Exists(t.Context(), "openstack_fw_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttrPair(
 						"data.openstack_fw_policy_v2.policy_1", "rules.0",
 						"openstack_fw_rule_v2.rule_1", "id"),
@@ -222,7 +224,7 @@ func TestAccFWPolicyV2_rulesOrder(t *testing.T) {
 			{
 				Config: testAccFWPolicyV2RulesOrderRemove,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckFWPolicyV2Exists("openstack_fw_policy_v2.policy_1", &policy),
+					testAccCheckFWPolicyV2Exists(t.Context(), "openstack_fw_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttrPair(
 						"data.openstack_fw_policy_v2.policy_1", "rules.0",
 						"openstack_fw_rule_v2.rule_4", "id"),
@@ -240,7 +242,7 @@ func TestAccFWPolicyV2_rulesOrder(t *testing.T) {
 			{
 				Config: testAccFWPolicyV2RulesOrderRevert,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckFWPolicyV2Exists("openstack_fw_policy_v2.policy_1", &policy),
+					testAccCheckFWPolicyV2Exists(t.Context(), "openstack_fw_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttrPair(
 						"data.openstack_fw_policy_v2.policy_1", "rules.0",
 						"openstack_fw_rule_v2.rule_4", "id"),
@@ -261,7 +263,7 @@ func TestAccFWPolicyV2_rulesOrder(t *testing.T) {
 			{
 				Config: testAccFWPolicyV2RulesOrderBasic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckFWPolicyV2Exists("openstack_fw_policy_v2.policy_1", &policy),
+					testAccCheckFWPolicyV2Exists(t.Context(), "openstack_fw_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttrPair(
 						"data.openstack_fw_policy_v2.policy_1", "rules.0",
 						"openstack_fw_rule_v2.rule_1", "id"),
@@ -282,7 +284,7 @@ func TestAccFWPolicyV2_rulesOrder(t *testing.T) {
 			{
 				Config: testAccFWPolicyV2RulesOrderShuffle,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckFWPolicyV2Exists("openstack_fw_policy_v2.policy_1", &policy),
+					testAccCheckFWPolicyV2Exists(t.Context(), "openstack_fw_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttrPair(
 						"data.openstack_fw_policy_v2.policy_1", "rules.0",
 						"openstack_fw_rule_v2.rule_1", "id"),
@@ -303,7 +305,7 @@ func TestAccFWPolicyV2_rulesOrder(t *testing.T) {
 			{
 				Config: testAccFWPolicyV2RulesOrderRemove,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckFWPolicyV2Exists("openstack_fw_policy_v2.policy_1", &policy),
+					testAccCheckFWPolicyV2Exists(t.Context(), "openstack_fw_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttrPair(
 						"data.openstack_fw_policy_v2.policy_1", "rules.0",
 						"openstack_fw_rule_v2.rule_4", "id"),
@@ -321,7 +323,7 @@ func TestAccFWPolicyV2_rulesOrder(t *testing.T) {
 			{
 				Config: testAccFWPolicyV2RulesOrderBasic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckFWPolicyV2Exists("openstack_fw_policy_v2.policy_1", &policy),
+					testAccCheckFWPolicyV2Exists(t.Context(), "openstack_fw_policy_v2.policy_1", &policy),
 					resource.TestCheckResourceAttrPair(
 						"data.openstack_fw_policy_v2.policy_1", "rules.0",
 						"openstack_fw_rule_v2.rule_1", "id"),
@@ -342,28 +344,35 @@ func TestAccFWPolicyV2_rulesOrder(t *testing.T) {
 	})
 }
 
-func testAccCheckFWPolicyV2Destroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	networkingClient, err := config.NetworkingV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack networking client: %s", err)
+func testAccCheckFWPolicyV2Destroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
+
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
+		}
+
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_fw_policy_v2" {
+				continue
+			}
+
+			_, err = policies.Get(ctx, networkingClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return fmt.Errorf("Firewall policy (%s) still exists", rs.Primary.ID)
+			}
+
+			if !gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
+				return err
+			}
+		}
+
+		return nil
 	}
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_fw_policy_v2" {
-			continue
-		}
-		_, err = policies.Get(networkingClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("Firewall policy (%s) still exists", rs.Primary.ID)
-		}
-		if _, ok := err.(gophercloud.ErrDefault404); !ok {
-			return err
-		}
-	}
-	return nil
 }
 
-func testAccCheckFWPolicyV2Exists(n string, policy *policies.Policy) resource.TestCheckFunc {
+func testAccCheckFWPolicyV2Exists(ctx context.Context, n string, policy *policies.Policy) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -371,27 +380,31 @@ func testAccCheckFWPolicyV2Exists(n string, policy *policies.Policy) resource.Te
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		networkingClient, err := config.NetworkingV2Client(osRegionName)
+
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack networking client: %s", err)
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
 		}
 
 		var found *policies.Policy
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			// Firewall policy creation is asynchronous. Retry some times
 			// if we get a 404 error. Fail on any other error.
-			found, err = policies.Get(networkingClient, rs.Primary.ID).Extract()
+			found, err = policies.Get(ctx, networkingClient, rs.Primary.ID).Extract()
 			if err != nil {
-				if _, ok := err.(gophercloud.ErrDefault404); ok {
+				if gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
 					time.Sleep(time.Second)
+
 					continue
 				}
+
 				return err
 			}
+
 			break
 		}
 
@@ -427,8 +440,8 @@ resource "openstack_fw_policy_v2" "policy_1" {
   description = "terraform acceptance test"
   audited     = true
   rules       = [
-    "${openstack_fw_rule_v2.udp_deny.id}",
-    "${openstack_fw_rule_v2.tcp_allow.id}"
+    openstack_fw_rule_v2.udp_deny.id,
+    openstack_fw_rule_v2.tcp_allow.id
   ]
 }
 `
@@ -457,7 +470,7 @@ resource "openstack_fw_policy_v2" "policy_1" {
   name        = "policy_1"
   description = "terraform acceptance test"
   rules       = [
-    "${openstack_fw_rule_v2.udp_deny.id}"
+    openstack_fw_rule_v2.udp_deny.id
   ]
 }
 `
@@ -487,15 +500,15 @@ resource "openstack_fw_policy_v2" "policy_1" {
   name        = "policy_1"
   description = "terraform acceptance test"
   rules       = [
-    "${openstack_fw_rule_v2.rule_1.id}",
-	"${openstack_fw_rule_v2.rule_2.id}",
-	"${openstack_fw_rule_v2.rule_3.id}",
-	"${openstack_fw_rule_v2.rule_4.id}"
+    openstack_fw_rule_v2.rule_1.id,
+	openstack_fw_rule_v2.rule_2.id,
+	openstack_fw_rule_v2.rule_3.id,
+	openstack_fw_rule_v2.rule_4.id
   ]
 }
 
 data "openstack_fw_policy_v2" "policy_1" {
-  policy_id = "${openstack_fw_policy_v2.policy_1.id}"
+  policy_id = openstack_fw_policy_v2.policy_1.id
 }
 `
 
@@ -524,14 +537,14 @@ resource "openstack_fw_policy_v2" "policy_1" {
   name        = "policy_1"
   description = "terraform acceptance test"
   rules       = [
-    "${openstack_fw_rule_v2.rule_4.id}",
-	"${openstack_fw_rule_v2.rule_2.id}",
-	"${openstack_fw_rule_v2.rule_1.id}"
+    openstack_fw_rule_v2.rule_4.id,
+	openstack_fw_rule_v2.rule_2.id,
+	openstack_fw_rule_v2.rule_1.id
   ]
 }
 
 data "openstack_fw_policy_v2" "policy_1" {
-  policy_id = "${openstack_fw_policy_v2.policy_1.id}"
+  policy_id = openstack_fw_policy_v2.policy_1.id
 }
 `
 
@@ -560,15 +573,15 @@ resource "openstack_fw_policy_v2" "policy_1" {
   name        = "policy_1"
   description = "terraform acceptance test"
   rules       = [
-    "${openstack_fw_rule_v2.rule_4.id}",
-	"${openstack_fw_rule_v2.rule_3.id}",
-	"${openstack_fw_rule_v2.rule_2.id}",
-	"${openstack_fw_rule_v2.rule_1.id}"
+    openstack_fw_rule_v2.rule_4.id,
+	openstack_fw_rule_v2.rule_3.id,
+	openstack_fw_rule_v2.rule_2.id,
+	openstack_fw_rule_v2.rule_1.id
   ]
 }
 
 data "openstack_fw_policy_v2" "policy_1" {
-  policy_id = "${openstack_fw_policy_v2.policy_1.id}"
+  policy_id = openstack_fw_policy_v2.policy_1.id
 }
 `
 
@@ -597,14 +610,14 @@ resource "openstack_fw_policy_v2" "policy_1" {
   name        = "policy_1"
   description = "terraform acceptance test"
   rules       = [
-    "${openstack_fw_rule_v2.rule_1.id}",
-	"${openstack_fw_rule_v2.rule_4.id}",
-	"${openstack_fw_rule_v2.rule_2.id}",
-	"${openstack_fw_rule_v2.rule_3.id}"
+    openstack_fw_rule_v2.rule_1.id,
+	openstack_fw_rule_v2.rule_4.id,
+	openstack_fw_rule_v2.rule_2.id,
+	openstack_fw_rule_v2.rule_3.id
   ]
 }
 
 data "openstack_fw_policy_v2" "policy_1" {
-  policy_id = "${openstack_fw_policy_v2.policy_1.id}"
+  policy_id = openstack_fw_policy_v2.policy_1.id
 }
 `

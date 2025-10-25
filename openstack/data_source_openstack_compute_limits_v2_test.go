@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccComputeV2LimitsDataSource(t *testing.T) {
@@ -56,7 +57,7 @@ func testAccCheckComputeLimitsV2DataSourceID(n string) resource.TestCheckFunc {
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Compute limits data source ID not set")
+			return errors.New("Compute limits data source ID not set")
 		}
 
 		return nil
@@ -74,7 +75,7 @@ func testAccComputeV2LimitsDataSourceSource() string {
 %s
 
 data "openstack_compute_limits_v2" "source" {
-  project_id = "${openstack_identity_project_v3.project.id}"
+  project_id = openstack_identity_project_v3.project.id
 }
 `, testAccComputeV2LimitsDataSourceBasic)
 }

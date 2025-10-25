@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccNetworkingV2QoSDSCPMarkingRuleDataSource_basic(t *testing.T) {
@@ -13,7 +14,6 @@ func TestAccNetworkingV2QoSDSCPMarkingRuleDataSource_basic(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckAdminOnly(t)
-			testAccSkipReleasesBelow(t, "stable/yoga")
 		},
 		ProviderFactories: testAccProviders,
 		Steps: []resource.TestStep{
@@ -40,7 +40,7 @@ func testAccCheckNetworkingQoSDSCPMarkingRuleV2DataSourceID(n string) resource.T
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("QoS DSCP marking data source ID not set")
+			return errors.New("QoS DSCP marking data source ID not set")
 		}
 
 		return nil
@@ -52,7 +52,7 @@ resource "openstack_networking_qos_policy_v2" "qos_policy_1" {
   name = "qos_policy_1"
 }
 resource "openstack_networking_qos_dscp_marking_rule_v2" "dscp_mark_rule_1" {
-  qos_policy_id  = "${openstack_networking_qos_policy_v2.qos_policy_1.id}"
+  qos_policy_id  = openstack_networking_qos_policy_v2.qos_policy_1.id
   dscp_mark      = 26
 }
 `
@@ -61,8 +61,8 @@ func testAccOpenStackNetworkingQoSDSCPMarkingRuleV2DataSourceBasic() string {
 	return fmt.Sprintf(`
 %s
 data "openstack_networking_qos_dscp_marking_rule_v2" "dscp_mark_rule_1" {
-  qos_policy_id = "${openstack_networking_qos_policy_v2.qos_policy_1.id}"
-  dscp_mark     = "${openstack_networking_qos_dscp_marking_rule_v2.dscp_mark_rule_1.dscp_mark}"
+  qos_policy_id = openstack_networking_qos_policy_v2.qos_policy_1.id
+  dscp_mark     = openstack_networking_qos_dscp_marking_rule_v2.dscp_mark_rule_1.dscp_mark
 }
 `, testAccNetworkingV2QoSDSCPMarkingRuleDataSource)
 }

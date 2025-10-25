@@ -4,15 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
+	"github.com/gophercloud/gophercloud/v2/openstack/containerinfra/v1/clusters"
+	"github.com/gophercloud/gophercloud/v2/openstack/containerinfra/v1/nodegroups"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/gophercloud/gophercloud/openstack/containerinfra/v1/clusters"
-	"github.com/gophercloud/gophercloud/openstack/containerinfra/v1/nodegroups"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
 func resourceContainerInfraNodeGroupV1() *schema.Resource {
@@ -96,9 +95,10 @@ func resourceContainerInfraNodeGroupV1() *schema.Resource {
 			},
 
 			"node_count": {
-				Type:     schema.TypeInt,
-				Optional: true,
-				Default:  1,
+				Type:         schema.TypeInt,
+				Optional:     true,
+				ValidateFunc: validation.IntAtLeast(0),
+				Default:      1,
 			},
 
 			"min_node_count": {
@@ -131,9 +131,10 @@ func resourceContainerInfraNodeGroupV1() *schema.Resource {
 	}
 }
 
-func resourceContainerInfraNodeGroupV1Create(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceContainerInfraNodeGroupV1Create(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	containerInfraClient, err := config.ContainerInfraV1Client(GetRegion(d, config))
+
+	containerInfraClient, err := config.ContainerInfraV1Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack container infra client: %s", err)
 	}
@@ -141,7 +142,8 @@ func resourceContainerInfraNodeGroupV1Create(ctx context.Context, d *schema.Reso
 	containerInfraClient.Microversion = containerInfraV1NodeGroupMinMicroversion
 
 	// Get and check labels map.
-	rawLabels := d.Get("labels").(map[string]interface{})
+	rawLabels := d.Get("labels").(map[string]any)
+
 	labels, err := expandContainerInfraV1LabelsMap(rawLabels)
 	if err != nil {
 		return diag.FromErr(err)
@@ -161,13 +163,16 @@ func resourceContainerInfraNodeGroupV1Create(ctx context.Context, d *schema.Reso
 	if dockerVolumeSize > 0 {
 		createOpts.DockerVolumeSize = &dockerVolumeSize
 	}
+
 	nodeCount := d.Get("node_count").(int)
 	if nodeCount >= 0 {
 		createOpts.NodeCount = &nodeCount
+
 		if nodeCount == 0 {
 			containerInfraClient.Microversion = containerInfraV1ZeroNodeCountMicroversion
 		}
 	}
+
 	maxNodeCount := d.Get("max_node_count").(int)
 	if maxNodeCount > 0 {
 		createOpts.MaxNodeCount = &maxNodeCount
@@ -181,7 +186,8 @@ func resourceContainerInfraNodeGroupV1Create(ctx context.Context, d *schema.Reso
 	log.Printf("[DEBUG] openstack_containerinfra_nodegroup_v1 create options: %#v", createOpts)
 
 	clusterID := d.Get("cluster_id").(string)
-	nodeGroup, err := nodegroups.Create(containerInfraClient, clusterID, createOpts).Extract()
+
+	nodeGroup, err := nodegroups.Create(ctx, containerInfraClient, clusterID, createOpts).Extract()
 	if err != nil {
 		return diag.Errorf("Error creating openstack_containerinfra_nodegroup_v1: %s", err)
 	}
@@ -189,14 +195,15 @@ func resourceContainerInfraNodeGroupV1Create(ctx context.Context, d *schema.Reso
 	id := fmt.Sprintf("%s/%s", clusterID, nodeGroup.UUID)
 	d.SetId(id)
 
-	stateConf := &resource.StateChangeConf{
+	stateConf := &retry.StateChangeConf{
 		Pending:      []string{"CREATE_IN_PROGRESS"},
 		Target:       []string{"CREATE_COMPLETE"},
-		Refresh:      containerInfraNodeGroupV1StateRefreshFunc(containerInfraClient, clusterID, nodeGroup.UUID),
+		Refresh:      containerInfraNodeGroupV1StateRefreshFunc(ctx, containerInfraClient, clusterID, nodeGroup.UUID),
 		Timeout:      d.Timeout(schema.TimeoutCreate),
-		Delay:        1 * time.Minute,
+		Delay:        0,
 		PollInterval: 20 * time.Second,
 	}
+
 	_, err = stateConf.WaitForStateContext(ctx)
 	if err != nil {
 		return diag.Errorf(
@@ -208,21 +215,22 @@ func resourceContainerInfraNodeGroupV1Create(ctx context.Context, d *schema.Reso
 	return resourceContainerInfraNodeGroupV1Read(ctx, d, meta)
 }
 
-func resourceContainerInfraNodeGroupV1Read(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceContainerInfraNodeGroupV1Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	containerInfraClient, err := config.ContainerInfraV1Client(GetRegion(d, config))
+
+	containerInfraClient, err := config.ContainerInfraV1Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack container infra client: %s", err)
 	}
 
 	containerInfraClient.Microversion = containerInfraV1NodeGroupMinMicroversion
 
-	clusterID, nodeGroupID, err := parseNodeGroupID(d.Id())
+	clusterID, nodeGroupID, err := parsePairedIDs(d.Id(), "openstack_containerinfra_nodegroup_v1")
 	if err != nil {
-		return diag.FromErr(CheckDeleted(d, err, "Error parsing ID of openstack_containerinfra_nodegroup_v1"))
+		return diag.FromErr(err)
 	}
 
-	nodeGroup, err := nodegroups.Get(containerInfraClient, clusterID, nodeGroupID).Extract()
+	nodeGroup, err := nodegroups.Get(ctx, containerInfraClient, clusterID, nodeGroupID).Extract()
 	if err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "Error retrieving openstack_containerinfra_nodegroup_v1"))
 	}
@@ -230,13 +238,16 @@ func resourceContainerInfraNodeGroupV1Read(_ context.Context, d *schema.Resource
 	log.Printf("[DEBUG] Retrieved openstack_containerinfra_nodegroup_v1 %s: %#v", d.Id(), nodeGroup)
 
 	labels := nodeGroup.Labels
+
 	if d.Get("merge_labels").(bool) {
-		resourceDataLabels, err := expandContainerInfraV1LabelsMap(d.Get("labels").(map[string]interface{}))
+		resourceDataLabels, err := expandContainerInfraV1LabelsMap(d.Get("labels").(map[string]any))
 		if err != nil {
 			return diag.FromErr(err)
 		}
+
 		labels = containerInfraV1GetLabelsMerged(nodeGroup.LabelsAdded, nodeGroup.LabelsSkipped, nodeGroup.LabelsOverridden, nodeGroup.Labels, resourceDataLabels)
 	}
+
 	if err := d.Set("labels", labels); err != nil {
 		return diag.Errorf("Unable to set openstack_containerinfra_nodegroup_v1 labels: %s", err)
 	}
@@ -256,6 +267,7 @@ func resourceContainerInfraNodeGroupV1Read(_ context.Context, d *schema.Resource
 	if err := d.Set("created_at", nodeGroup.CreatedAt.Format(time.RFC3339)); err != nil {
 		log.Printf("[DEBUG] Unable to set openstack_containerinfra_nodegroup_v1 created_at: %s", err)
 	}
+
 	if err := d.Set("updated_at", nodeGroup.UpdatedAt.Format(time.RFC3339)); err != nil {
 		log.Printf("[DEBUG] Unable to set openstack_containerinfra_nodegroup_v1 updated_at: %s", err)
 	}
@@ -263,18 +275,19 @@ func resourceContainerInfraNodeGroupV1Read(_ context.Context, d *schema.Resource
 	return nil
 }
 
-func resourceContainerInfraNodeGroupV1Update(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceContainerInfraNodeGroupV1Update(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	containerInfraClient, err := config.ContainerInfraV1Client(GetRegion(d, config))
+
+	containerInfraClient, err := config.ContainerInfraV1Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack container infra client: %s", err)
 	}
 
 	containerInfraClient.Microversion = containerInfraV1NodeGroupMinMicroversion
 
-	clusterID, nodeGroupID, err := parseNodeGroupID(d.Id())
+	clusterID, nodeGroupID, err := parsePairedIDs(d.Id(), "openstack_containerinfra_nodegroup_v1")
 	if err != nil {
-		return diag.FromErr(CheckDeleted(d, err, "Error parsing ID of openstack_containerinfra_nodegroup_v1"))
+		return diag.FromErr(err)
 	}
 
 	updateOpts := []nodegroups.UpdateOptsBuilder{}
@@ -295,66 +308,76 @@ func resourceContainerInfraNodeGroupV1Update(ctx context.Context, d *schema.Reso
 		log.Printf(
 			"[DEBUG] Updating openstack_containerinfra_nodegroup_v1 %s with options: %#v", d.Id(), updateOpts)
 
-		_, err = nodegroups.Update(containerInfraClient, clusterID, nodeGroupID, updateOpts).Extract()
+		_, err = nodegroups.Update(ctx, containerInfraClient, clusterID, nodeGroupID, updateOpts).Extract()
 		if err != nil {
 			return diag.Errorf("Error updating openstack_containerinfra_nodegroup_v1 %s: %s", d.Id(), err)
 		}
 	}
 
 	if d.HasChange("node_count") {
-		v := d.Get("node_count").(int)
-		var resizeOpts = clusters.ResizeOpts{
-			NodeCount: &v,
+		nodeCount := d.Get("node_count").(int)
+
+		resizeOpts := clusters.ResizeOpts{
+			NodeCount: &nodeCount,
 			NodeGroup: nodeGroupID,
 		}
-		_, err = clusters.Resize(containerInfraClient, clusterID, resizeOpts).Extract()
+
+		if nodeCount == 0 {
+			containerInfraClient.Microversion = containerInfraV1ZeroNodeCountMicroversion
+		}
+
+		_, err = clusters.Resize(ctx, containerInfraClient, clusterID, resizeOpts).Extract()
 		if err != nil {
 			return diag.Errorf("Error resizing openstack_containerinfra_nodegroup_v1 %s: %s", d.Id(), err)
 		}
 
-		stateConf := &resource.StateChangeConf{
+		stateConf := &retry.StateChangeConf{
 			Pending:      []string{"UPDATE_IN_PROGRESS"},
 			Target:       []string{"UPDATE_COMPLETE"},
-			Refresh:      containerInfraNodeGroupV1StateRefreshFunc(containerInfraClient, clusterID, nodeGroupID),
+			Refresh:      containerInfraNodeGroupV1StateRefreshFunc(ctx, containerInfraClient, clusterID, nodeGroupID),
 			Timeout:      d.Timeout(schema.TimeoutUpdate),
-			Delay:        1 * time.Minute,
+			Delay:        0,
 			PollInterval: 20 * time.Second,
 		}
+
 		_, err = stateConf.WaitForStateContext(ctx)
 		if err != nil {
 			return diag.Errorf(
 				"Error waiting for openstack_containerinfra_node_group_v1 %s to become updated: %s", d.Id(), err)
 		}
 	}
+
 	return resourceContainerInfraNodeGroupV1Read(ctx, d, meta)
 }
 
-func resourceContainerInfraNodeGroupV1Delete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceContainerInfraNodeGroupV1Delete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	containerInfraClient, err := config.ContainerInfraV1Client(GetRegion(d, config))
+
+	containerInfraClient, err := config.ContainerInfraV1Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack container infra client: %s", err)
 	}
 
 	containerInfraClient.Microversion = containerInfraV1NodeGroupMinMicroversion
 
-	clusterID, nodeGroupID, err := parseNodeGroupID(d.Id())
+	clusterID, nodeGroupID, err := parsePairedIDs(d.Id(), "openstack_containerinfra_nodegroup_v1")
 	if err != nil {
-		return diag.FromErr(CheckDeleted(d, err, "Error parsing ID of openstack_containerinfra_nodegroup_v1"))
+		return diag.FromErr(err)
 	}
 
-	if err := nodegroups.Delete(containerInfraClient, clusterID, nodeGroupID).ExtractErr(); err != nil {
+	if err := nodegroups.Delete(ctx, containerInfraClient, clusterID, nodeGroupID).ExtractErr(); err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "Error deleting openstack_containerinfra_nodegroup_v1"))
 	}
 
-	stateConf := &resource.StateChangeConf{
+	stateConf := &retry.StateChangeConf{
 		Pending:      []string{"DELETE_IN_PROGRESS"},
 		Target:       []string{"DELETE_COMPLETE"},
-		Refresh:      containerInfraNodeGroupV1StateRefreshFunc(containerInfraClient, clusterID, nodeGroupID),
+		Refresh:      containerInfraNodeGroupV1StateRefreshFunc(ctx, containerInfraClient, clusterID, nodeGroupID),
 		Timeout:      d.Timeout(schema.TimeoutDelete),
-		Delay:        30 * time.Second,
+		Delay:        0,
 		PollInterval: 10 * time.Second,
 	}
+
 	_, err = stateConf.WaitForStateContext(ctx)
 	if err != nil {
 		return diag.Errorf(
@@ -362,13 +385,4 @@ func resourceContainerInfraNodeGroupV1Delete(ctx context.Context, d *schema.Reso
 	}
 
 	return nil
-}
-
-func parseNodeGroupID(id string) (string, string, error) {
-	idParts := strings.Split(id, "/")
-	if len(idParts) < 2 {
-		return "", "", fmt.Errorf("Unable to determine nodegroup ID %s", id)
-	}
-
-	return idParts[0], idParts[1], nil
 }

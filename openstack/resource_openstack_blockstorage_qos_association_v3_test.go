@@ -1,23 +1,26 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/blockstorage/v3/qos"
-	"github.com/gophercloud/gophercloud/openstack/blockstorage/v3/volumetypes"
+	"github.com/gophercloud/gophercloud/v2/openstack/blockstorage/v3/qos"
+	"github.com/gophercloud/gophercloud/v2/openstack/blockstorage/v3/volumetypes"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccBlockstorageV3QosAssociation_basic(t *testing.T) {
 	var qosTest qos.QoS
-	var qosName = fmt.Sprintf("ACCPTTEST-%s", acctest.RandString(5))
+
+	qosName := "ACCPTTEST-" + acctest.RandString(5)
 
 	var vt volumetypes.VolumeType
-	var vtName = fmt.Sprintf("ACCPTTEST-%s", acctest.RandString(5))
+
+	vtName := "ACCPTTEST-" + acctest.RandString(5)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -25,14 +28,14 @@ func TestAccBlockstorageV3QosAssociation_basic(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckBlockstorageV3QosAssociationDestroy,
+		CheckDestroy:      testAccCheckBlockstorageV3QosAssociationDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBlockstorageV3QosAssociationBasic(qosName, vtName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckBlockStorageQosV3Exists("openstack_blockstorage_qos_v3.qos", &qosTest),
-					testAccCheckBlockStorageVolumeTypeV3Exists("openstack_blockstorage_volume_type_v3.volume_type_1", &vt),
-					testAccCheckBlockstorageV3QosAssociationExists("openstack_blockstorage_qos_association_v3.qos_association"),
+					testAccCheckBlockStorageQosV3Exists(t.Context(), "openstack_blockstorage_qos_v3.qos", &qosTest),
+					testAccCheckBlockStorageVolumeTypeV3Exists(t.Context(), "openstack_blockstorage_volume_type_v3.volume_type_1", &vt),
+					testAccCheckBlockstorageV3QosAssociationExists(t.Context(), "openstack_blockstorage_qos_association_v3.qos_association"),
 					resource.TestCheckResourceAttrPtr(
 						"openstack_blockstorage_qos_association_v3.qos_association", "qos_id", &qosTest.ID),
 					resource.TestCheckResourceAttrPtr(
@@ -43,40 +46,43 @@ func TestAccBlockstorageV3QosAssociation_basic(t *testing.T) {
 	})
 }
 
-func testAccCheckBlockstorageV3QosAssociationDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	blockStorageClient, err := config.BlockStorageV3Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack block storage client: %s", err)
-	}
+func testAccCheckBlockstorageV3QosAssociationDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_blockstorage_qos_association_v3" {
-			continue
-		}
-
-		qosID, vtID, err := parseQosAssociationID(rs.Primary.ID)
+		blockStorageClient, err := config.BlockStorageV3Client(ctx, osRegionName)
 		if err != nil {
-			return err
+			return fmt.Errorf("Error creating OpenStack block storage client: %w", err)
 		}
 
-		allPages, err := qos.ListAssociations(blockStorageClient, qosID).AllPages()
-		if err == nil {
-			allAssociations, err := qos.ExtractAssociations(allPages)
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_blockstorage_qos_association_v3" {
+				continue
+			}
+
+			qosID, vtID, err := parsePairedIDs(rs.Primary.ID, "openstack_blockstorage_qos_association_v3")
+			if err != nil {
+				return err
+			}
+
+			allPages, err := qos.ListAssociations(blockStorageClient, qosID).AllPages(ctx)
 			if err == nil {
-				for _, association := range allAssociations {
-					if association.ID == vtID {
-						return fmt.Errorf("Qos association still exists")
+				allAssociations, err := qos.ExtractAssociations(allPages)
+				if err == nil {
+					for _, association := range allAssociations {
+						if association.ID == vtID {
+							return errors.New("Qos association still exists")
+						}
 					}
 				}
 			}
 		}
-	}
 
-	return nil
+		return nil
+	}
 }
 
-func testAccCheckBlockstorageV3QosAssociationExists(n string) resource.TestCheckFunc {
+func testAccCheckBlockstorageV3QosAssociationExists(ctx context.Context, n string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -84,21 +90,22 @@ func testAccCheckBlockstorageV3QosAssociationExists(n string) resource.TestCheck
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		blockStorageClient, err := config.BlockStorageV3Client(osRegionName)
+
+		blockStorageClient, err := config.BlockStorageV3Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack block storage client: %s", err)
+			return fmt.Errorf("Error creating OpenStack block storage client: %w", err)
 		}
 
-		qosID, vtID, err := parseQosAssociationID(rs.Primary.ID)
+		qosID, vtID, err := parsePairedIDs(rs.Primary.ID, "openstack_blockstorage_qos_association_v3")
 		if err != nil {
 			return err
 		}
 
-		allPages, err := qos.ListAssociations(blockStorageClient, qosID).AllPages()
+		allPages, err := qos.ListAssociations(blockStorageClient, qosID).AllPages(ctx)
 		if err != nil {
 			return fmt.Errorf("Error retrieving associations for qos: %s", qosID)
 		}
@@ -109,9 +116,11 @@ func testAccCheckBlockstorageV3QosAssociationExists(n string) resource.TestCheck
 		}
 
 		found := false
+
 		for _, association := range allAssociations {
 			if association.ID == vtID {
 				found = true
+
 				break
 			}
 		}
@@ -139,8 +148,8 @@ resource "openstack_blockstorage_volume_type_v3" "volume_type_1" {
 }
 
 resource "openstack_blockstorage_qos_association_v3" "qos_association" {
-  qos_id         = "${openstack_blockstorage_qos_v3.qos.id}"
-  volume_type_id = "${openstack_blockstorage_volume_type_v3.volume_type_1.id}"
+  qos_id         = openstack_blockstorage_qos_v3.qos.id
+  volume_type_id = openstack_blockstorage_volume_type_v3.volume_type_1.id
 }
 `, qosName, vtName)
 }

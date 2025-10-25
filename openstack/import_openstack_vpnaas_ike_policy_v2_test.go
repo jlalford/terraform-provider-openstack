@@ -3,10 +3,10 @@ package openstack
 import (
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func TestAccIKEPolicy_importBasic(t *testing.T) {
+func TestAccVPNaaSV2IKEPolicy_importBasic(t *testing.T) {
 	resourceName := "openstack_vpnaas_ike_policy_v2.policy_1"
 
 	resource.Test(t, resource.TestCase{
@@ -16,7 +16,7 @@ func TestAccIKEPolicy_importBasic(t *testing.T) {
 			testAccPreCheckVPN(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIKEPolicyV2Destroy,
+		CheckDestroy:      testAccCheckIKEPolicyV2Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIKEPolicyV2Basic,

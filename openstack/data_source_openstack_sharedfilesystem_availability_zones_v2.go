@@ -4,11 +4,10 @@ import (
 	"context"
 	"sort"
 
+	"github.com/gophercloud/gophercloud/v2/openstack/sharedfilesystems/v2/availabilityzones"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/gophercloud/gophercloud/openstack/sharedfilesystems/v2/availabilityzones"
-	"github.com/gophercloud/utils/terraform/hashcode"
+	"github.com/terraform-provider-openstack/utils/v2/hashcode"
 )
 
 func dataSourceSharedFilesystemAvailabilityZonesV2() *schema.Resource {
@@ -32,17 +31,19 @@ func dataSourceSharedFilesystemAvailabilityZonesV2() *schema.Resource {
 	}
 }
 
-func dataSourceSharedFilesystemAvailabilityZonesV2Read(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func dataSourceSharedFilesystemAvailabilityZonesV2Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	client, err := config.SharedfilesystemV2Client(GetRegion(d, config))
+
+	client, err := config.SharedfilesystemV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack sharedfilesystem client: %s", err)
 	}
 
-	allPages, err := availabilityzones.List(client).AllPages()
+	allPages, err := availabilityzones.List(client).AllPages(ctx)
 	if err != nil {
 		return diag.Errorf("Error retrieving openstack_sharedfilesystem_availability_zones_v2: %s", err)
 	}
+
 	zoneInfo, err := availabilityzones.ExtractAvailabilityZones(allPages)
 	if err != nil {
 		return diag.Errorf("Error extracting openstack_sharedfilesystem_availability_zones_v2 from response: %s", err)

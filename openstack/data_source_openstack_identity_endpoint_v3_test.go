@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccOpenStackIdentityV3EndpointDataSource_basic(t *testing.T) {
@@ -41,7 +42,7 @@ func testAccCheckIdentityEndpointV3DataSourceID(n string) resource.TestCheckFunc
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Endpoint data source ID not set")
+			return errors.New("Endpoint data source ID not set")
 		}
 
 		return nil

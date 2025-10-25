@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"time"
 
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/vpnaas/endpointgroups"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/vpnaas/endpointgroups"
 )
 
 func resourceEndpointGroupV2() *schema.Resource {
@@ -73,9 +73,10 @@ func resourceEndpointGroupV2() *schema.Resource {
 	}
 }
 
-func resourceEndpointGroupV2Create(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceEndpointGroupV2Create(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
@@ -98,21 +99,21 @@ func resourceEndpointGroupV2Create(ctx context.Context, d *schema.ResourceData, 
 
 	log.Printf("[DEBUG] Create group: %#v", createOpts)
 
-	group, err := endpointgroups.Create(networkingClient, createOpts).Extract()
+	group, err := endpointgroups.Create(ctx, networkingClient, createOpts).Extract()
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	stateConf := &resource.StateChangeConf{
+	stateConf := &retry.StateChangeConf{
 		Pending:    []string{"PENDING_CREATE"},
 		Target:     []string{"ACTIVE"},
-		Refresh:    waitForEndpointGroupCreation(networkingClient, group.ID),
+		Refresh:    waitForEndpointGroupCreation(ctx, networkingClient, group.ID),
 		Timeout:    d.Timeout(schema.TimeoutCreate),
 		Delay:      0,
 		MinTimeout: 2 * time.Second,
 	}
-	_, err = stateConf.WaitForStateContext(ctx)
 
+	_, err = stateConf.WaitForStateContext(ctx)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -124,16 +125,17 @@ func resourceEndpointGroupV2Create(ctx context.Context, d *schema.ResourceData, 
 	return resourceEndpointGroupV2Read(ctx, d, meta)
 }
 
-func resourceEndpointGroupV2Read(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceEndpointGroupV2Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	log.Printf("[DEBUG] Retrieve information about group: %s", d.Id())
 
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
 
-	group, err := endpointgroups.Get(networkingClient, d.Id()).Extract()
+	group, err := endpointgroups.Get(ctx, networkingClient, d.Id()).Extract()
 	if err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "group"))
 	}
@@ -150,9 +152,10 @@ func resourceEndpointGroupV2Read(ctx context.Context, d *schema.ResourceData, me
 	return nil
 }
 
-func resourceEndpointGroupV2Update(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceEndpointGroupV2Update(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
@@ -178,20 +181,21 @@ func resourceEndpointGroupV2Update(ctx context.Context, d *schema.ResourceData, 
 	log.Printf("[DEBUG] Updating endpoint group with id %s: %#v", d.Id(), updateOpts)
 
 	if hasChange {
-		group, err := endpointgroups.Update(networkingClient, d.Id(), updateOpts).Extract()
+		group, err := endpointgroups.Update(ctx, networkingClient, d.Id(), updateOpts).Extract()
 		if err != nil {
 			return diag.FromErr(err)
 		}
-		stateConf := &resource.StateChangeConf{
+
+		stateConf := &retry.StateChangeConf{
 			Pending:    []string{"PENDING_UPDATE"},
 			Target:     []string{"UPDATED"},
-			Refresh:    waitForEndpointGroupUpdate(networkingClient, group.ID),
+			Refresh:    waitForEndpointGroupUpdate(ctx, networkingClient, group.ID),
 			Timeout:    d.Timeout(schema.TimeoutCreate),
 			Delay:      0,
 			MinTimeout: 2 * time.Second,
 		}
-		_, err = stateConf.WaitForStateContext(ctx)
 
+		_, err = stateConf.WaitForStateContext(ctx)
 		if err != nil {
 			return diag.FromErr(err)
 		}
@@ -202,25 +206,25 @@ func resourceEndpointGroupV2Update(ctx context.Context, d *schema.ResourceData, 
 	return resourceEndpointGroupV2Read(ctx, d, meta)
 }
 
-func resourceEndpointGroupV2Delete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceEndpointGroupV2Delete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	log.Printf("[DEBUG] Destroy group: %s", d.Id())
 
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
 
-	err = endpointgroups.Delete(networkingClient, d.Id()).Err
-
+	err = endpointgroups.Delete(ctx, networkingClient, d.Id()).Err
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	stateConf := &resource.StateChangeConf{
+	stateConf := &retry.StateChangeConf{
 		Pending:    []string{"DELETING"},
 		Target:     []string{"DELETED"},
-		Refresh:    waitForEndpointGroupDeletion(networkingClient, d.Id()),
+		Refresh:    waitForEndpointGroupDeletion(ctx, networkingClient, d.Id()),
 		Timeout:    d.Timeout(schema.TimeoutDelete),
 		Delay:      0,
 		MinTimeout: 2 * time.Second,
@@ -231,46 +235,52 @@ func resourceEndpointGroupV2Delete(ctx context.Context, d *schema.ResourceData, 
 	return diag.FromErr(err)
 }
 
-func waitForEndpointGroupDeletion(networkingClient *gophercloud.ServiceClient, id string) resource.StateRefreshFunc {
-	return func() (interface{}, string, error) {
-		group, err := endpointgroups.Get(networkingClient, id).Extract()
+func waitForEndpointGroupDeletion(ctx context.Context, networkingClient *gophercloud.ServiceClient, id string) retry.StateRefreshFunc {
+	return func() (any, string, error) {
+		group, err := endpointgroups.Get(ctx, networkingClient, id).Extract()
 		log.Printf("[DEBUG] Got group %s => %#v", id, group)
 
 		if err != nil {
-			if _, ok := err.(gophercloud.ErrDefault404); ok {
+			if gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
 				log.Printf("[DEBUG] EndpointGroup %s is actually deleted", id)
+
 				return "", "DELETED", nil
 			}
-			return nil, "", fmt.Errorf("Unexpected error: %s", err)
+
+			return nil, "", fmt.Errorf("Unexpected error: %w", err)
 		}
 
 		log.Printf("[DEBUG] EndpointGroup %s deletion is pending", id)
+
 		return group, "DELETING", nil
 	}
 }
 
-func waitForEndpointGroupCreation(networkingClient *gophercloud.ServiceClient, id string) resource.StateRefreshFunc {
-	return func() (interface{}, string, error) {
-		group, err := endpointgroups.Get(networkingClient, id).Extract()
+func waitForEndpointGroupCreation(ctx context.Context, networkingClient *gophercloud.ServiceClient, id string) retry.StateRefreshFunc {
+	return func() (any, string, error) {
+		group, err := endpointgroups.Get(ctx, networkingClient, id).Extract()
 		if err != nil {
 			return "", "PENDING_CREATE", nil
 		}
+
 		return group, "ACTIVE", nil
 	}
 }
 
-func waitForEndpointGroupUpdate(networkingClient *gophercloud.ServiceClient, id string) resource.StateRefreshFunc {
-	return func() (interface{}, string, error) {
-		group, err := endpointgroups.Get(networkingClient, id).Extract()
+func waitForEndpointGroupUpdate(ctx context.Context, networkingClient *gophercloud.ServiceClient, id string) retry.StateRefreshFunc {
+	return func() (any, string, error) {
+		group, err := endpointgroups.Get(ctx, networkingClient, id).Extract()
 		if err != nil {
 			return "", "PENDING_UPDATE", nil
 		}
+
 		return group, "UPDATED", nil
 	}
 }
 
 func resourceEndpointGroupV2EndpointType(epType string) endpointgroups.EndpointType {
 	var et endpointgroups.EndpointType
+
 	switch epType {
 	case "subnet":
 		et = endpointgroups.TypeSubnet
@@ -283,5 +293,6 @@ func resourceEndpointGroupV2EndpointType(epType string) endpointgroups.EndpointT
 	case "network":
 		et = endpointgroups.TypeNetwork
 	}
+
 	return et
 }

@@ -3,16 +3,17 @@ package openstack
 import (
 	"context"
 	"os"
+	"runtime/debug"
 
+	"github.com/gophercloud/gophercloud/v2"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/logging"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/meta"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/utils/terraform/auth"
-	"github.com/gophercloud/utils/terraform/mutexkv"
+	"github.com/terraform-provider-openstack/utils/v2/auth"
+	"github.com/terraform-provider-openstack/utils/v2/mutexkv"
 )
+
+var version = "dev"
 
 // Use openstackbase.Config as the base/foundation of this provider's
 // Config struct.
@@ -22,6 +23,78 @@ type Config struct {
 
 // Provider returns a schema.Provider for OpenStack.
 func Provider() *schema.Provider {
+	descriptions := map[string]string{
+		"auth_url": "The Identity authentication URL.",
+
+		"cloud": "An entry in a `clouds.yaml` file to use.",
+
+		"region": "The OpenStack region to connect to.",
+
+		"user_name": "Username to login with.",
+
+		"user_id": "User ID to login with.",
+
+		"application_credential_id": "Application Credential ID to login with.",
+
+		"application_credential_name": "Application Credential name to login with.",
+
+		"application_credential_secret": "Application Credential secret to login with.",
+
+		"tenant_id": "The ID of the Tenant (Identity v2) or Project (Identity v3)\n" +
+			"to login with.",
+
+		"tenant_name": "The name of the Tenant (Identity v2) or Project (Identity v3)\n" +
+			"to login with.",
+
+		"password": "Password to login with.",
+
+		"token": "Authentication token to use as an alternative to username/password.",
+
+		"user_domain_name": "The name of the domain where the user resides (Identity v3).",
+
+		"user_domain_id": "The ID of the domain where the user resides (Identity v3).",
+
+		"project_domain_name": "The name of the domain where the project resides (Identity v3).",
+
+		"project_domain_id": "The ID of the domain where the proejct resides (Identity v3).",
+
+		"domain_id": "The ID of the Domain to scope to (Identity v3).",
+
+		"domain_name": "The name of the Domain to scope to (Identity v3).",
+
+		"default_domain": "The name of the Domain ID to scope to if no other domain is specified. Defaults to `default` (Identity v3).",
+
+		"system_scope": "If set to `true`, system scoped authorization will be enabled. Defaults to `false` (Identity v3).",
+
+		"insecure": "Trust self-signed certificates.",
+
+		"cacert_file": "A Custom CA certificate.",
+
+		"cert": "A client certificate to authenticate with.",
+
+		"key": "A client private key to authenticate with.",
+
+		"endpoint_type": "The catalog endpoint type to use.",
+
+		"endpoint_overrides": "A map of services with an endpoint to override what was\n" +
+			"from the Keystone catalog",
+
+		"swauth": "Use Swift's authentication system instead of Keystone. Only used for\n" +
+			"interaction with Swift.",
+
+		"disable_no_cache_header": "If set to `true`, the HTTP `Cache-Control: no-cache` header will not be added by default to all API requests.",
+
+		"delayed_auth": "If set to `false`, OpenStack authorization will be perfomed,\n" +
+			"every time the service provider client is called. Defaults to `true`.",
+
+		"allow_reauth": "If set to `false`, OpenStack authorization won't be perfomed\n" +
+			"automatically, if the initial auth token get expired. Defaults to `true`",
+
+		"max_retries": "How many times HTTP connection should be retried until giving up.",
+
+		"enable_logging": "Outputs very verbose logs with all calls made to and responses from OpenStack",
+	}
+
 	provider := &schema.Provider{
 		Schema: map[string]*schema.Schema{
 			"auth_url": {
@@ -259,9 +332,7 @@ func Provider() *schema.Provider {
 
 		DataSourcesMap: map[string]*schema.Resource{
 			"openstack_blockstorage_availability_zones_v3":       dataSourceBlockStorageAvailabilityZonesV3(),
-			"openstack_blockstorage_snapshot_v2":                 dataSourceBlockStorageSnapshotV2(),
 			"openstack_blockstorage_snapshot_v3":                 dataSourceBlockStorageSnapshotV3(),
-			"openstack_blockstorage_volume_v2":                   dataSourceBlockStorageVolumeV2(),
 			"openstack_blockstorage_volume_v3":                   dataSourceBlockStorageVolumeV3(),
 			"openstack_blockstorage_quotaset_v3":                 dataSourceBlockStorageQuotasetV3(),
 			"openstack_compute_aggregate_v2":                     dataSourceComputeAggregateV2(),
@@ -269,6 +340,7 @@ func Provider() *schema.Provider {
 			"openstack_compute_instance_v2":                      dataSourceComputeInstanceV2(),
 			"openstack_compute_flavor_v2":                        dataSourceComputeFlavorV2(),
 			"openstack_compute_hypervisor_v2":                    dataSourceComputeHypervisorV2(),
+			"openstack_compute_servergroup_v2":                   dataSourceComputeServerGroupV2(),
 			"openstack_compute_keypair_v2":                       dataSourceComputeKeypairV2(),
 			"openstack_compute_quotaset_v2":                      dataSourceComputeQuotasetV2(),
 			"openstack_compute_limits_v2":                        dataSourceComputeLimitsV2(),
@@ -276,12 +348,13 @@ func Provider() *schema.Provider {
 			"openstack_containerinfra_clustertemplate_v1":        dataSourceContainerInfraClusterTemplateV1(),
 			"openstack_containerinfra_cluster_v1":                dataSourceContainerInfraCluster(),
 			"openstack_dns_zone_v2":                              dataSourceDNSZoneV2(),
+			"openstack_dns_zone_share_v2":                        dataSourceDNSZoneShareV2(),
 			"openstack_fw_group_v2":                              dataSourceFWGroupV2(),
-			"openstack_fw_policy_v1":                             dataSourceFWPolicyV1(),
 			"openstack_fw_policy_v2":                             dataSourceFWPolicyV2(),
 			"openstack_fw_rule_v2":                               dataSourceFWRuleV2(),
 			"openstack_identity_role_v3":                         dataSourceIdentityRoleV3(),
 			"openstack_identity_project_v3":                      dataSourceIdentityProjectV3(),
+			"openstack_identity_project_ids_v3":                  dataSourceIdentityProjectIDsV3(),
 			"openstack_identity_user_v3":                         dataSourceIdentityUserV3(),
 			"openstack_identity_auth_scope_v3":                   dataSourceIdentityAuthScopeV3(),
 			"openstack_identity_endpoint_v3":                     dataSourceIdentityEndpointV3(),
@@ -305,24 +378,27 @@ func Provider() *schema.Provider {
 			"openstack_networking_port_v2":                       dataSourceNetworkingPortV2(),
 			"openstack_networking_port_ids_v2":                   dataSourceNetworkingPortIDsV2(),
 			"openstack_networking_trunk_v2":                      dataSourceNetworkingTrunkV2(),
+			"openstack_networking_segment_v2":                    dataSourceNetworkingSegmentV2(),
 			"openstack_sharedfilesystem_availability_zones_v2":   dataSourceSharedFilesystemAvailabilityZonesV2(),
 			"openstack_sharedfilesystem_sharenetwork_v2":         dataSourceSharedFilesystemShareNetworkV2(),
 			"openstack_sharedfilesystem_share_v2":                dataSourceSharedFilesystemShareV2(),
 			"openstack_sharedfilesystem_snapshot_v2":             dataSourceSharedFilesystemSnapshotV2(),
 			"openstack_keymanager_secret_v1":                     dataSourceKeyManagerSecretV1(),
 			"openstack_keymanager_container_v1":                  dataSourceKeyManagerContainerV1(),
-			"openstack_loadbalancer_flavor_v2":                   dataSourceLBFlavorV2(),
+			"openstack_loadbalancer_flavor_v2":                   dataSourceLoadBalancerFlavorV2(),
+			"openstack_lb_flavor_v2":                             dataSourceLBFlavorV2(),
+			"openstack_lb_flavorprofile_v2":                      dataSourceLBFlavorProfileV2(),
+			"openstack_lb_loadbalancer_v2":                       dataSourceLBLoadbalancerV2(),
+			"openstack_lb_listener_v2":                           dataSourceLBListenerV2(),
+			"openstack_lb_pool_v2":                               dataSourceLBPoolV2(),
+			"openstack_workflow_workflow_v2":                     dataSourceWorkflowWorkflowV2(),
 		},
 
 		ResourcesMap: map[string]*schema.Resource{
 			"openstack_blockstorage_qos_association_v3":          resourceBlockStorageQosAssociationV3(),
 			"openstack_blockstorage_qos_v3":                      resourceBlockStorageQosV3(),
-			"openstack_blockstorage_quotaset_v2":                 resourceBlockStorageQuotasetV2(),
 			"openstack_blockstorage_quotaset_v3":                 resourceBlockStorageQuotasetV3(),
-			"openstack_blockstorage_volume_v1":                   resourceBlockStorageVolumeV1(),
-			"openstack_blockstorage_volume_v2":                   resourceBlockStorageVolumeV2(),
 			"openstack_blockstorage_volume_v3":                   resourceBlockStorageVolumeV3(),
-			"openstack_blockstorage_volume_attach_v2":            resourceBlockStorageVolumeAttachV2(),
 			"openstack_blockstorage_volume_attach_v3":            resourceBlockStorageVolumeAttachV3(),
 			"openstack_blockstorage_volume_type_access_v3":       resourceBlockstorageVolumeTypeAccessV3(),
 			"openstack_blockstorage_volume_type_v3":              resourceBlockStorageVolumeTypeV3(),
@@ -332,11 +408,8 @@ func Provider() *schema.Provider {
 			"openstack_compute_instance_v2":                      resourceComputeInstanceV2(),
 			"openstack_compute_interface_attach_v2":              resourceComputeInterfaceAttachV2(),
 			"openstack_compute_keypair_v2":                       resourceComputeKeypairV2(),
-			"openstack_compute_secgroup_v2":                      resourceComputeSecGroupV2(),
 			"openstack_compute_servergroup_v2":                   resourceComputeServerGroupV2(),
 			"openstack_compute_quotaset_v2":                      resourceComputeQuotasetV2(),
-			"openstack_compute_floatingip_v2":                    resourceComputeFloatingIPV2(),
-			"openstack_compute_floatingip_associate_v2":          resourceComputeFloatingIPAssociateV2(),
 			"openstack_compute_volume_attach_v2":                 resourceComputeVolumeAttachV2(),
 			"openstack_containerinfra_nodegroup_v1":              resourceContainerInfraNodeGroupV1(),
 			"openstack_containerinfra_clustertemplate_v1":        resourceContainerInfraClusterTemplateV1(),
@@ -347,13 +420,12 @@ func Provider() *schema.Provider {
 			"openstack_db_database_v1":                           resourceDatabaseDatabaseV1(),
 			"openstack_dns_recordset_v2":                         resourceDNSRecordSetV2(),
 			"openstack_dns_zone_v2":                              resourceDNSZoneV2(),
+			"openstack_dns_zone_share_v2":                        resourceDNSZoneShareV2(),
 			"openstack_dns_transfer_request_v2":                  resourceDNSTransferRequestV2(),
 			"openstack_dns_transfer_accept_v2":                   resourceDNSTransferAcceptV2(),
-			"openstack_fw_firewall_v1":                           resourceFWFirewallV1(),
+			"openstack_dns_quota_v2":                             resourceDNSQuotaV2(),
 			"openstack_fw_group_v2":                              resourceFWGroupV2(),
-			"openstack_fw_policy_v1":                             resourceFWPolicyV1(),
 			"openstack_fw_policy_v2":                             resourceFWPolicyV2(),
-			"openstack_fw_rule_v1":                               resourceFWRuleV1(),
 			"openstack_fw_rule_v2":                               resourceFWRuleV2(),
 			"openstack_identity_endpoint_v3":                     resourceIdentityEndpointV3(),
 			"openstack_identity_project_v3":                      resourceIdentityProjectV3(),
@@ -366,13 +438,13 @@ func Provider() *schema.Provider {
 			"openstack_identity_group_v3":                        resourceIdentityGroupV3(),
 			"openstack_identity_application_credential_v3":       resourceIdentityApplicationCredentialV3(),
 			"openstack_identity_ec2_credential_v3":               resourceIdentityEc2CredentialV3(),
+			"openstack_identity_registered_limit_v3":             resourceIdentityRegisteredLimitV3(),
+			"openstack_identity_limit_v3":                        resourceIdentityLimitV3(),
 			"openstack_images_image_v2":                          resourceImagesImageV2(),
 			"openstack_images_image_access_v2":                   resourceImagesImageAccessV2(),
 			"openstack_images_image_access_accept_v2":            resourceImagesImageAccessAcceptV2(),
-			"openstack_lb_member_v1":                             resourceLBMemberV1(),
-			"openstack_lb_monitor_v1":                            resourceLBMonitorV1(),
-			"openstack_lb_pool_v1":                               resourceLBPoolV1(),
-			"openstack_lb_vip_v1":                                resourceLBVipV1(),
+			"openstack_lb_flavor_v2":                             resourceLoadBalancerFlavorV2(),
+			"openstack_lb_flavorprofile_v2":                      resourceLoadBalancerFlavorProfileV2(),
 			"openstack_lb_loadbalancer_v2":                       resourceLoadBalancerV2(),
 			"openstack_lb_listener_v2":                           resourceListenerV2(),
 			"openstack_lb_pool_v2":                               resourcePoolV2(),
@@ -382,6 +454,8 @@ func Provider() *schema.Provider {
 			"openstack_lb_l7policy_v2":                           resourceL7PolicyV2(),
 			"openstack_lb_l7rule_v2":                             resourceL7RuleV2(),
 			"openstack_lb_quota_v2":                              resourceLoadBalancerQuotaV2(),
+			"openstack_networking_bgp_speaker_v2":                resourceNetworkingBGPSpeakerV2(),
+			"openstack_networking_bgp_peer_v2":                   resourceNetworkingBGPPeerV2(),
 			"openstack_networking_floatingip_v2":                 resourceNetworkingFloatingIPV2(),
 			"openstack_networking_floatingip_associate_v2":       resourceNetworkingFloatingIPAssociateV2(),
 			"openstack_networking_network_v2":                    resourceNetworkingNetworkV2(),
@@ -396,18 +470,23 @@ func Provider() *schema.Provider {
 			"openstack_networking_router_v2":                     resourceNetworkingRouterV2(),
 			"openstack_networking_router_interface_v2":           resourceNetworkingRouterInterfaceV2(),
 			"openstack_networking_router_route_v2":               resourceNetworkingRouterRouteV2(),
+			"openstack_networking_router_routes_v2":              resourceNetworkingRouterRoutesV2(),
 			"openstack_networking_secgroup_v2":                   resourceNetworkingSecGroupV2(),
 			"openstack_networking_secgroup_rule_v2":              resourceNetworkingSecGroupRuleV2(),
+			"openstack_networking_address_group_v2":              resourceNetworkingAddressGroupV2(),
 			"openstack_networking_subnet_v2":                     resourceNetworkingSubnetV2(),
 			"openstack_networking_subnet_route_v2":               resourceNetworkingSubnetRouteV2(),
 			"openstack_networking_subnetpool_v2":                 resourceNetworkingSubnetPoolV2(),
 			"openstack_networking_addressscope_v2":               resourceNetworkingAddressScopeV2(),
 			"openstack_networking_trunk_v2":                      resourceNetworkingTrunkV2(),
 			"openstack_networking_portforwarding_v2":             resourceNetworkingPortForwardingV2(),
+			"openstack_networking_segment_v2":                    resourceNetworkingSegmentV2(),
+			"openstack_objectstorage_account_v1":                 resourceObjectStorageAccountV1(),
 			"openstack_objectstorage_container_v1":               resourceObjectStorageContainerV1(),
 			"openstack_objectstorage_object_v1":                  resourceObjectStorageObjectV1(),
 			"openstack_objectstorage_tempurl_v1":                 resourceObjectstorageTempurlV1(),
 			"openstack_orchestration_stack_v1":                   resourceOrchestrationStackV1(),
+			"openstack_taas_tap_mirror_v2":                       resourceTapMirrorV2(),
 			"openstack_vpnaas_ipsec_policy_v2":                   resourceIPSecPolicyV2(),
 			"openstack_vpnaas_service_v2":                        resourceServiceV2(),
 			"openstack_vpnaas_ike_policy_v2":                     resourceIKEPolicyV2(),
@@ -420,99 +499,48 @@ func Provider() *schema.Provider {
 			"openstack_keymanager_secret_v1":                     resourceKeyManagerSecretV1(),
 			"openstack_keymanager_container_v1":                  resourceKeyManagerContainerV1(),
 			"openstack_keymanager_order_v1":                      resourceKeyManagerOrderV1(),
+			"openstack_bgpvpn_v2":                                resourceBGPVPNV2(),
+			"openstack_bgpvpn_network_associate_v2":              resourceBGPVPNNetworkAssociateV2(),
+			"openstack_bgpvpn_router_associate_v2":               resourceBGPVPNRouterAssociateV2(),
+			"openstack_bgpvpn_port_associate_v2":                 resourceBGPVPNPortAssociateV2(),
 		},
 	}
 
-	provider.ConfigureContextFunc = func(_ context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
-		terraformVersion := provider.TerraformVersion
-		if terraformVersion == "" {
-			// Terraform 0.12 introduced this field to the protocol
-			// We can therefore assume that if it's missing it's 0.10 or 0.11
-			terraformVersion = "0.11+compatible"
-		}
-		return configureProvider(d, terraformVersion)
+	provider.ConfigureContextFunc = func(ctx context.Context, d *schema.ResourceData) (any, diag.Diagnostics) {
+		return configureProvider(ctx, provider, d)
 	}
 
 	return provider
 }
 
-var descriptions map[string]string
-
-func init() {
-	descriptions = map[string]string{
-		"auth_url": "The Identity authentication URL.",
-
-		"cloud": "An entry in a `clouds.yaml` file to use.",
-
-		"region": "The OpenStack region to connect to.",
-
-		"user_name": "Username to login with.",
-
-		"user_id": "User ID to login with.",
-
-		"application_credential_id": "Application Credential ID to login with.",
-
-		"application_credential_name": "Application Credential name to login with.",
-
-		"application_credential_secret": "Application Credential secret to login with.",
-
-		"tenant_id": "The ID of the Tenant (Identity v2) or Project (Identity v3)\n" +
-			"to login with.",
-
-		"tenant_name": "The name of the Tenant (Identity v2) or Project (Identity v3)\n" +
-			"to login with.",
-
-		"password": "Password to login with.",
-
-		"token": "Authentication token to use as an alternative to username/password.",
-
-		"user_domain_name": "The name of the domain where the user resides (Identity v3).",
-
-		"user_domain_id": "The ID of the domain where the user resides (Identity v3).",
-
-		"project_domain_name": "The name of the domain where the project resides (Identity v3).",
-
-		"project_domain_id": "The ID of the domain where the proejct resides (Identity v3).",
-
-		"domain_id": "The ID of the Domain to scope to (Identity v3).",
-
-		"domain_name": "The name of the Domain to scope to (Identity v3).",
-
-		"default_domain": "The name of the Domain ID to scope to if no other domain is specified. Defaults to `default` (Identity v3).",
-
-		"system_scope": "If set to `true`, system scoped authorization will be enabled. Defaults to `false` (Identity v3).",
-
-		"insecure": "Trust self-signed certificates.",
-
-		"cacert_file": "A Custom CA certificate.",
-
-		"cert": "A client certificate to authenticate with.",
-
-		"key": "A client private key to authenticate with.",
-
-		"endpoint_type": "The catalog endpoint type to use.",
-
-		"endpoint_overrides": "A map of services with an endpoint to override what was\n" +
-			"from the Keystone catalog",
-
-		"swauth": "Use Swift's authentication system instead of Keystone. Only used for\n" +
-			"interaction with Swift.",
-
-		"disable_no_cache_header": "If set to `true`, the HTTP `Cache-Control: no-cache` header will not be added by default to all API requests.",
-
-		"delayed_auth": "If set to `false`, OpenStack authorization will be perfomed,\n" +
-			"every time the service provider client is called. Defaults to `true`.",
-
-		"allow_reauth": "If set to `false`, OpenStack authorization won't be perfomed\n" +
-			"automatically, if the initial auth token get expired. Defaults to `true`",
-
-		"max_retries": "How many times HTTP connection should be retried until giving up.",
-
-		"enable_logging": "Outputs very verbose logs with all calls made to and responses from OpenStack",
+func getSDKVersion() string {
+	buildInfo, ok := debug.ReadBuildInfo()
+	if !ok {
+		return version
 	}
+
+	for _, v := range buildInfo.Deps {
+		if v.Path == "github.com/hashicorp/terraform-plugin-sdk/v2" {
+			return v.Version
+		}
+	}
+
+	return version
 }
 
-func configureProvider(d *schema.ResourceData, terraformVersion string) (interface{}, diag.Diagnostics) {
+func configureProvider(ctx context.Context, provider *schema.Provider, d *schema.ResourceData) (any, diag.Diagnostics) {
+	// If the provider has already been configured, return the existing config.
+	if v, ok := provider.Meta().(*Config); ok {
+		return v, nil
+	}
+
+	terraformVersion := provider.TerraformVersion
+	if terraformVersion == "" {
+		// Terraform 0.12 introduced this field to the protocol
+		// We can therefore assume that if it's missing it's 0.10 or 0.11
+		terraformVersion = "0.11+compatible"
+	}
+
 	enableLogging := d.Get("enable_logging").(bool)
 	if !enableLogging {
 		// enforce logging (similar to OS_DEBUG) when TF_LOG is 'DEBUG' or 'TRACE'
@@ -536,7 +564,7 @@ func configureProvider(d *schema.ResourceData, terraformVersion string) (interfa
 			DefaultDomain:               d.Get("default_domain").(string),
 			DomainID:                    d.Get("domain_id").(string),
 			DomainName:                  d.Get("domain_name").(string),
-			EndpointOverrides:           d.Get("endpoint_overrides").(map[string]interface{}),
+			EndpointOverrides:           d.Get("endpoint_overrides").(map[string]any),
 			EndpointType:                d.Get("endpoint_type").(string),
 			IdentityEndpoint:            d.Get("auth_url").(string),
 			Password:                    d.Get("password").(string),
@@ -561,19 +589,19 @@ func configureProvider(d *schema.ResourceData, terraformVersion string) (interfa
 			MaxRetries:                  d.Get("max_retries").(int),
 			DisableNoCacheHeader:        d.Get("disable_no_cache_header").(bool),
 			TerraformVersion:            terraformVersion,
-			SDKVersion:                  meta.SDKVersionString(),
+			SDKVersion:                  getSDKVersion() + " Terraform Provider OpenStack/" + version,
 			MutexKV:                     mutexkv.NewMutexKV(),
 			EnableLogger:                enableLogging,
 		},
 	}
 
-	v, ok := d.GetOkExists("insecure")
+	v, ok := getOkExists(d, "insecure")
 	if ok {
 		insecure := v.(bool)
 		config.Insecure = &insecure
 	}
 
-	if err := config.LoadAndValidate(); err != nil {
+	if err := config.LoadAndValidate(ctx); err != nil {
 		return nil, diag.FromErr(err)
 	}
 

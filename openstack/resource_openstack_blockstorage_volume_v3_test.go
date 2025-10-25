@@ -1,14 +1,15 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/blockstorage/v3/volumes"
+	"github.com/gophercloud/gophercloud/v2/openstack/blockstorage/v3/volumes"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccBlockStorageV3Volume_basic(t *testing.T) {
@@ -20,12 +21,12 @@ func TestAccBlockStorageV3Volume_basic(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckBlockStorageV3VolumeDestroy,
+		CheckDestroy:      testAccCheckBlockStorageV3VolumeDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBlockStorageV3VolumeBasic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckBlockStorageV3VolumeExists("openstack_blockstorage_volume_v3.volume_1", &volume),
+					testAccCheckBlockStorageV3VolumeExists(t.Context(), "openstack_blockstorage_volume_v3.volume_1", &volume),
 					testAccCheckBlockStorageV3VolumeMetadata(&volume, "foo", "bar"),
 					resource.TestCheckResourceAttr(
 						"openstack_blockstorage_volume_v3.volume_1", "name", "volume_1"),
@@ -36,7 +37,7 @@ func TestAccBlockStorageV3Volume_basic(t *testing.T) {
 			{
 				Config: testAccBlockStorageV3VolumeUpdate,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckBlockStorageV3VolumeExists("openstack_blockstorage_volume_v3.volume_1", &volume),
+					testAccCheckBlockStorageV3VolumeExists(t.Context(), "openstack_blockstorage_volume_v3.volume_1", &volume),
 					testAccCheckBlockStorageV3VolumeMetadata(&volume, "foo", "bar"),
 					resource.TestCheckResourceAttr(
 						"openstack_blockstorage_volume_v3.volume_1", "name", "volume_1-updated"),
@@ -56,7 +57,7 @@ func TestAccBlockStorageV3Volume_online_resize(t *testing.T) {
 			testAccPreOnlineResize(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckBlockStorageV3VolumeDestroy,
+		CheckDestroy:      testAccCheckBlockStorageV3VolumeDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBlockStorageV3VolumeOnlineResize(),
@@ -85,12 +86,12 @@ func TestAccBlockStorageV3Volume_image(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckBlockStorageV3VolumeDestroy,
+		CheckDestroy:      testAccCheckBlockStorageV3VolumeDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBlockStorageV3VolumeImage(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckBlockStorageV3VolumeExists("openstack_blockstorage_volume_v3.volume_1", &volume),
+					testAccCheckBlockStorageV3VolumeExists(t.Context(), "openstack_blockstorage_volume_v3.volume_1", &volume),
 					resource.TestCheckResourceAttr(
 						"openstack_blockstorage_volume_v3.volume_1", "name", "volume_1"),
 				),
@@ -108,12 +109,12 @@ func TestAccBlockStorageV3Volume_timeout(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckBlockStorageV3VolumeDestroy,
+		CheckDestroy:      testAccCheckBlockStorageV3VolumeDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBlockStorageV3VolumeTimeout,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckBlockStorageV3VolumeExists("openstack_blockstorage_volume_v3.volume_1", &volume),
+					testAccCheckBlockStorageV3VolumeExists(t.Context(), "openstack_blockstorage_volume_v3.volume_1", &volume),
 				),
 			},
 		},
@@ -129,12 +130,12 @@ func TestAccBlockStorageV3Volume_attachment(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckBlockStorageV3VolumeDestroy,
+		CheckDestroy:      testAccCheckBlockStorageV3VolumeDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBlockStorageV3VolumeAttachment(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckBlockStorageV3VolumeExists("openstack_blockstorage_volume_v3.volume_1", &volume),
+					testAccCheckBlockStorageV3VolumeExists(t.Context(), "openstack_blockstorage_volume_v3.volume_1", &volume),
 					testAccCheckBlockStorageV3VolumeAttachment(&volume, *regexp.MustCompile(`\/dev\/.dc`)),
 				),
 			},
@@ -155,12 +156,12 @@ func TestAccBlockStorageV3VolumeFromBackup(t *testing.T) {
 			t.Skip("Currently Cinder Backup is not configured properly on GH-A devstack")
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckBlockStorageV3VolumeDestroy,
+		CheckDestroy:      testAccCheckBlockStorageV3VolumeDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBlockStorageV3VolumeFromBackup(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckBlockStorageV3VolumeExists("openstack_blockstorage_volume_v3.volume_1", &volume),
+					testAccCheckBlockStorageV3VolumeExists(t.Context(), "openstack_blockstorage_volume_v3.volume_1", &volume),
 					resource.TestCheckResourceAttr(
 						"openstack_blockstorage_volume_v3.volume_1", "name", "volume_1"),
 				),
@@ -169,28 +170,31 @@ func TestAccBlockStorageV3VolumeFromBackup(t *testing.T) {
 	})
 }
 
-func testAccCheckBlockStorageV3VolumeDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	blockStorageClient, err := config.BlockStorageV3Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack block storage client: %s", err)
-	}
+func testAccCheckBlockStorageV3VolumeDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_blockstorage_volume_v3" {
-			continue
+		blockStorageClient, err := config.BlockStorageV3Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack block storage client: %w", err)
 		}
 
-		_, err := volumes.Get(blockStorageClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("Volume still exists")
-		}
-	}
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_blockstorage_volume_v3" {
+				continue
+			}
 
-	return nil
+			_, err := volumes.Get(ctx, blockStorageClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return errors.New("Volume still exists")
+			}
+		}
+
+		return nil
+	}
 }
 
-func testAccCheckBlockStorageV3VolumeExists(n string, volume *volumes.Volume) resource.TestCheckFunc {
+func testAccCheckBlockStorageV3VolumeExists(ctx context.Context, n string, volume *volumes.Volume) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -198,22 +202,23 @@ func testAccCheckBlockStorageV3VolumeExists(n string, volume *volumes.Volume) re
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		blockStorageClient, err := config.BlockStorageV3Client(osRegionName)
+
+		blockStorageClient, err := config.BlockStorageV3Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack block storage client: %s", err)
+			return fmt.Errorf("Error creating OpenStack block storage client: %w", err)
 		}
 
-		found, err := volumes.Get(blockStorageClient, rs.Primary.ID).Extract()
+		found, err := volumes.Get(ctx, blockStorageClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Volume not found")
+			return errors.New("Volume not found")
 		}
 
 		*volume = *found
@@ -223,10 +228,11 @@ func testAccCheckBlockStorageV3VolumeExists(n string, volume *volumes.Volume) re
 }
 
 func testAccCheckBlockStorageV3VolumeMetadata(
-	volume *volumes.Volume, k string, v string) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
+	volume *volumes.Volume, k string, v string,
+) resource.TestCheckFunc {
+	return func(_ *terraform.State) error {
 		if volume.Metadata == nil {
-			return fmt.Errorf("No metadata")
+			return errors.New("No metadata")
 		}
 
 		for key, value := range volume.Metadata {
@@ -246,25 +252,57 @@ func testAccCheckBlockStorageV3VolumeMetadata(
 }
 
 func testAccCheckBlockStorageV3VolumeAttachment(
-	volume *volumes.Volume, r regexp.Regexp) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
+	volume *volumes.Volume, r regexp.Regexp,
+) resource.TestCheckFunc {
+	return func(_ *terraform.State) error {
 		if volume.Attachments == nil {
-			return fmt.Errorf("No Attachment information")
+			return errors.New("No Attachment information")
 		}
 
 		if len(volume.Attachments) == 0 {
-			return fmt.Errorf("Volume shows not being attached to any Instance")
+			return errors.New("Volume shows not being attached to any Instance")
 		} else if len(volume.Attachments) > 1 {
-			return fmt.Errorf("Volume shows being attached to more Instances than expected")
+			return errors.New("Volume shows being attached to more Instances than expected")
 		}
 
 		match := r.MatchString(volume.Attachments[0].Device)
 		if match {
 			return nil
-		} else {
-			return fmt.Errorf("Volume shows other mountpoint than expected")
 		}
+
+		return errors.New("Volume shows other mountpoint than expected")
 	}
+}
+
+func TestAccBlockStorageV3Volume_VolumeTypeUpdate(t *testing.T) {
+	var volume volumes.Volume
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckAdminOnly(t)
+		},
+		ProviderFactories: testAccProviders,
+		CheckDestroy:      testAccCheckBlockStorageV3VolumeDestroy(t.Context()),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccBlockStorageV3VolumeRetype(),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckBlockStorageV3VolumeExists(t.Context(), "openstack_blockstorage_volume_v3.volume_1", &volume),
+					resource.TestCheckResourceAttr(
+						"openstack_blockstorage_volume_v3.volume_1", "volume_type", "initial_type"),
+				),
+			},
+			{
+				Config: testAccBlockStorageV3VolumeRetypeUpdate(),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckBlockStorageV3VolumeExists(t.Context(), "openstack_blockstorage_volume_v3.volume_1", &volume),
+					resource.TestCheckResourceAttr(
+						"openstack_blockstorage_volume_v3.volume_1", "volume_type", "new_type"),
+				),
+			},
+		},
+	})
 }
 
 const testAccBlockStorageV3VolumeBasic = `
@@ -275,6 +313,7 @@ resource "openstack_blockstorage_volume_v3" "volume_1" {
     foo = "bar"
   }
   size = 1
+  volume_retype_policy = "never"
 }
 `
 
@@ -294,8 +333,8 @@ resource "openstack_blockstorage_volume_v3" "volume_1" {
 }
 
 resource "openstack_compute_volume_attach_v2" "va_1" {
-  instance_id = "${openstack_compute_instance_v2.basic.id}"
-  volume_id   = "${openstack_blockstorage_volume_v3.volume_1.id}"
+  instance_id = openstack_compute_instance_v2.basic.id
+  volume_id   = openstack_blockstorage_volume_v3.volume_1.id
 }
 `, osFlavorName, osImageID)
 }
@@ -316,8 +355,8 @@ resource "openstack_blockstorage_volume_v3" "volume_1" {
 }
 
 resource "openstack_compute_volume_attach_v2" "va_1" {
-  instance_id = "${openstack_compute_instance_v2.basic.id}"
-  volume_id   = "${openstack_blockstorage_volume_v3.volume_1.id}"
+  instance_id = openstack_compute_instance_v2.basic.id
+  volume_id   = openstack_blockstorage_volume_v3.volume_1.id
 }
 `, osFlavorName, osImageID)
 }
@@ -372,8 +411,8 @@ resource "openstack_compute_instance_v2" "instance_1" {
 }
 
 resource "openstack_compute_volume_attach_v2" "va_1" {
-  instance_id = "${openstack_compute_instance_v2.instance_1.id}"
-  volume_id = "${openstack_blockstorage_volume_v3.volume_1.id}"
+  instance_id = openstack_compute_instance_v2.instance_1.id
+  volume_id = openstack_blockstorage_volume_v3.volume_1.id
   device = "/dev/vdc"
 }
 `, osNetworkID)
@@ -387,4 +426,48 @@ resource "openstack_blockstorage_volume_v3" "volume_1" {
   size = 2
 }
 `, osBackupID)
+}
+
+func testAccBlockStorageV3VolumeRetype() string {
+	return `
+resource "openstack_blockstorage_volume_type_v3" "initial_type" {
+  name        = "initial_type"
+  description = "initial_type"
+  is_public   = true
+}
+
+resource "openstack_blockstorage_volume_type_v3" "new_type" {
+  name        = "new_type"
+  description = "new_type"
+  is_public   = true
+}
+
+resource "openstack_blockstorage_volume_v3" "volume_1" {
+  name                 = "volume_1"
+  size                 = 1
+  volume_retype_policy = "on-demand"
+  volume_type          = openstack_blockstorage_volume_type_v3.initial_type.name
+}`
+}
+
+func testAccBlockStorageV3VolumeRetypeUpdate() string {
+	return `
+resource "openstack_blockstorage_volume_type_v3" "initial_type" {
+  name        = "initial_type"
+  description = "initial_type"
+  is_public   = true
+}
+
+resource "openstack_blockstorage_volume_type_v3" "new_type" {
+  name        = "new_type"
+  description = "new_type"
+  is_public   = true
+}
+
+resource "openstack_blockstorage_volume_v3" "volume_1" {
+  name                 = "volume_1"
+  size                 = 1
+  volume_retype_policy = "on-demand"
+  volume_type          = openstack_blockstorage_volume_type_v3.new_type.name
+}`
 }

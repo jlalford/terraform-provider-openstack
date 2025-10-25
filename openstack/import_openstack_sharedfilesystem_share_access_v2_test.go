@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccSFSV2ShareAccess_importBasic(t *testing.T) {
@@ -19,7 +19,7 @@ func TestAccSFSV2ShareAccess_importBasic(t *testing.T) {
 			testAccPreCheckSFS(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckSFSV2ShareAccessDestroy,
+		CheckDestroy:      testAccCheckSFSV2ShareAccessDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccSFSV2ShareAccessConfigBasic(),

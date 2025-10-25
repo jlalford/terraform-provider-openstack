@@ -1,6 +1,8 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -8,15 +10,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/sharedfilesystems/v2/securityservices"
-	"github.com/gophercloud/gophercloud/openstack/sharedfilesystems/v2/sharenetworks"
+	"github.com/gophercloud/gophercloud/v2/openstack/sharedfilesystems/v2/securityservices"
+	"github.com/gophercloud/gophercloud/v2/openstack/sharedfilesystems/v2/sharenetworks"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccSFSV2ShareNetwork_basic(t *testing.T) {
 	var sharenetwork1 sharenetworks.ShareNetwork
+
 	var sharenetwork2 sharenetworks.ShareNetwork
 
 	resource.Test(t, resource.TestCase{
@@ -26,12 +28,12 @@ func TestAccSFSV2ShareNetwork_basic(t *testing.T) {
 			testAccPreCheckSFS(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckSFSV2ShareNetworkDestroy,
+		CheckDestroy:      testAccCheckSFSV2ShareNetworkDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccSFSV2ShareNetworkConfigBasic(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSFSV2ShareNetworkExists("openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", &sharenetwork1),
+					testAccCheckSFSV2ShareNetworkExists(t.Context(), "openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", &sharenetwork1),
 					resource.TestCheckResourceAttr(
 						"openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", "name", "test_sharenetwork"),
 					resource.TestCheckResourceAttr(
@@ -47,7 +49,7 @@ func TestAccSFSV2ShareNetwork_basic(t *testing.T) {
 			{
 				Config: testAccSFSV2ShareNetworkConfigUpdate(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSFSV2ShareNetworkExists("openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", &sharenetwork2),
+					testAccCheckSFSV2ShareNetworkExists(t.Context(), "openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", &sharenetwork2),
 					resource.TestCheckResourceAttr(
 						"openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", "name", "test_sharenetwork_new_net"),
 					resource.TestCheckResourceAttr(
@@ -75,86 +77,89 @@ func TestAccSFSV2ShareNetwork_secservice(t *testing.T) {
 			testAccPreCheckSFS(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckSFSV2ShareNetworkDestroy,
+		CheckDestroy:      testAccCheckSFSV2ShareNetworkDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccSFSV2ShareNetworkConfigSecService1(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSFSV2ShareNetworkExists("openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", &sharenetwork),
+					testAccCheckSFSV2ShareNetworkExists(t.Context(), "openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", &sharenetwork),
 					resource.TestCheckResourceAttr(
 						"openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", "name", "test_sharenetwork_secure"),
 					resource.TestCheckResourceAttr(
 						"openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", "description", "share the secure love"),
 					resource.TestCheckResourceAttr(
 						"openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", "security_service_ids.#", "1"),
-					testAccCheckSFSV2ShareNetworkSecSvcExists("openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1"),
+					testAccCheckSFSV2ShareNetworkSecSvcExists(t.Context(), "openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1"),
 				),
 			},
 			{
 				Config: testAccSFSV2ShareNetworkConfigSecService2(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSFSV2ShareNetworkExists("openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", &sharenetwork),
+					testAccCheckSFSV2ShareNetworkExists(t.Context(), "openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", &sharenetwork),
 					resource.TestCheckResourceAttr(
 						"openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", "name", "test_sharenetwork_secure"),
 					resource.TestCheckResourceAttr(
 						"openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", "description", "share the secure love"),
 					resource.TestCheckResourceAttr(
 						"openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", "security_service_ids.#", "2"),
-					testAccCheckSFSV2ShareNetworkSecSvcExists("openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1"),
+					testAccCheckSFSV2ShareNetworkSecSvcExists(t.Context(), "openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1"),
 				),
 			},
 			{
 				Config: testAccSFSV2ShareNetworkConfigSecService3(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSFSV2ShareNetworkExists("openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", &sharenetwork),
+					testAccCheckSFSV2ShareNetworkExists(t.Context(), "openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", &sharenetwork),
 					resource.TestCheckResourceAttr(
 						"openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", "name", "test_sharenetwork_secure"),
 					resource.TestCheckResourceAttr(
 						"openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", "description", "share the secure love"),
 					resource.TestCheckResourceAttr(
 						"openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", "security_service_ids.#", "1"),
-					testAccCheckSFSV2ShareNetworkSecSvcExists("openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1"),
+					testAccCheckSFSV2ShareNetworkSecSvcExists(t.Context(), "openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1"),
 				),
 			},
 			{
 				Config: testAccSFSV2ShareNetworkConfigSecService4(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSFSV2ShareNetworkExists("openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", &sharenetwork),
+					testAccCheckSFSV2ShareNetworkExists(t.Context(), "openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", &sharenetwork),
 					resource.TestCheckResourceAttr(
 						"openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", "name", "test_sharenetwork"),
 					resource.TestCheckResourceAttr(
 						"openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", "description", "share the love"),
 					resource.TestCheckResourceAttr(
 						"openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1", "security_service_ids.#", "0"),
-					testAccCheckSFSV2ShareNetworkSecSvcExists("openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1"),
+					testAccCheckSFSV2ShareNetworkSecSvcExists(t.Context(), "openstack_sharedfilesystem_sharenetwork_v2.sharenetwork_1"),
 				),
 			},
 		},
 	})
 }
 
-func testAccCheckSFSV2ShareNetworkDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	sfsClient, err := config.SharedfilesystemV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack sharedfilesystem client: %s", err)
-	}
+func testAccCheckSFSV2ShareNetworkDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_sharedfilesystem_securityservice_v2" {
-			continue
+		sfsClient, err := config.SharedfilesystemV2Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack sharedfilesystem client: %w", err)
 		}
 
-		_, err := sharenetworks.Get(sfsClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("Manila sharenetwork still exists: %s", rs.Primary.ID)
-		}
-	}
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_sharedfilesystem_securityservice_v2" {
+				continue
+			}
 
-	return nil
+			_, err := sharenetworks.Get(ctx, sfsClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return fmt.Errorf("Manila sharenetwork still exists: %s", rs.Primary.ID)
+			}
+		}
+
+		return nil
+	}
 }
 
-func testAccCheckSFSV2ShareNetworkExists(n string, sharenetwork *sharenetworks.ShareNetwork) resource.TestCheckFunc {
+func testAccCheckSFSV2ShareNetworkExists(ctx context.Context, n string, sharenetwork *sharenetworks.ShareNetwork) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -162,22 +167,23 @@ func testAccCheckSFSV2ShareNetworkExists(n string, sharenetwork *sharenetworks.S
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		sfsClient, err := config.SharedfilesystemV2Client(osRegionName)
+
+		sfsClient, err := config.SharedfilesystemV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack sharedfilesystem client: %s", err)
+			return fmt.Errorf("Error creating OpenStack sharedfilesystem client: %w", err)
 		}
 
-		found, err := sharenetworks.Get(sfsClient, rs.Primary.ID).Extract()
+		found, err := sharenetworks.Get(ctx, sfsClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Member not found")
+			return errors.New("Member not found")
 		}
 
 		*sharenetwork = *found
@@ -186,7 +192,7 @@ func testAccCheckSFSV2ShareNetworkExists(n string, sharenetwork *sharenetworks.S
 	}
 }
 
-func testAccCheckSFSV2ShareNetworkSecSvcExists(n string) resource.TestCheckFunc {
+func testAccCheckSFSV2ShareNetworkSecSvcExists(ctx context.Context, n string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -194,20 +200,23 @@ func testAccCheckSFSV2ShareNetworkSecSvcExists(n string) resource.TestCheckFunc 
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		sfsClient, err := config.SharedfilesystemV2Client(osRegionName)
+
+		sfsClient, err := config.SharedfilesystemV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack sharedfilesystem client: %s", err)
+			return fmt.Errorf("Error creating OpenStack sharedfilesystem client: %w", err)
 		}
 
 		securityServiceListOpts := securityservices.ListOpts{ShareNetworkID: rs.Primary.ID}
-		securityServicePages, err := securityservices.List(sfsClient, securityServiceListOpts).AllPages()
+
+		securityServicePages, err := securityservices.List(sfsClient, securityServiceListOpts).AllPages(ctx)
 		if err != nil {
 			return err
 		}
+
 		securityServiceList, err := securityservices.ExtractSecurityServices(securityServicePages)
 		if err != nil {
 			return err
@@ -216,10 +225,12 @@ func testAccCheckSFSV2ShareNetworkSecSvcExists(n string) resource.TestCheckFunc 
 		apiSecurityServiceIDs := resourceSharedFilesystemShareNetworkV2SecSvcToArray(&securityServiceList)
 
 		var tfSecurityServiceIDs []string
+
 		for k, v := range rs.Primary.Attributes {
 			if strings.HasPrefix(k, "security_service_ids.#") {
 				continue
 			}
+
 			if strings.HasPrefix(k, "security_service_ids.") {
 				tfSecurityServiceIDs = append(tfSecurityServiceIDs, v)
 			}
@@ -237,11 +248,12 @@ func testAccCheckSFSV2ShareNetworkSecSvcExists(n string) resource.TestCheckFunc 
 }
 
 func testAccCheckSFSV2ShareNetworkNetDiffers(sharenetwork1, sharenetwork2 *sharenetworks.ShareNetwork) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
+	return func(_ *terraform.State) error {
 		if sharenetwork1.NeutronNetID != sharenetwork2.NeutronNetID && sharenetwork1.NeutronSubnetID != sharenetwork2.NeutronSubnetID {
 			return nil
 		}
-		return fmt.Errorf("Underlying neutron network should differ")
+
+		return errors.New("Underlying neutron network should differ")
 	}
 }
 
@@ -255,7 +267,7 @@ resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
   cidr = "192.168.199.0/24"
   ip_version = 4
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 }
 `
 
@@ -266,8 +278,8 @@ func testAccSFSV2ShareNetworkConfigBasic() string {
 resource "openstack_sharedfilesystem_sharenetwork_v2" "sharenetwork_1" {
   name                = "test_sharenetwork"
   description         = "share the love"
-  neutron_net_id      = "${openstack_networking_network_v2.network_1.id}"
-  neutron_subnet_id   = "${openstack_networking_subnet_v2.subnet_1.id}"
+  neutron_net_id      = openstack_networking_network_v2.network_1.id
+  neutron_subnet_id   = openstack_networking_subnet_v2.subnet_1.id
 }
 `, testAccSFSV2ShareNetworkConfig)
 }
@@ -285,14 +297,14 @@ resource "openstack_networking_subnet_v2" "subnet_2" {
   name = "subnet_2"
   cidr = "192.168.198.0/24"
   ip_version = 4
-  network_id = "${openstack_networking_network_v2.network_2.id}"
+  network_id = openstack_networking_network_v2.network_2.id
 }
 
 resource "openstack_sharedfilesystem_sharenetwork_v2" "sharenetwork_1" {
   name                = "test_sharenetwork_new_net"
   description         = ""
-  neutron_net_id      = "${openstack_networking_network_v2.network_2.id}"
-  neutron_subnet_id   = "${openstack_networking_subnet_v2.subnet_2.id}"
+  neutron_net_id      = openstack_networking_network_v2.network_2.id
+  neutron_subnet_id   = openstack_networking_subnet_v2.subnet_2.id
 }
 `, testAccSFSV2ShareNetworkConfig)
 }
@@ -328,10 +340,10 @@ func testAccSFSV2ShareNetworkConfigSecService1() string {
 resource "openstack_sharedfilesystem_sharenetwork_v2" "sharenetwork_1" {
   name                = "test_sharenetwork_secure"
   description         = "share the secure love"
-  neutron_net_id      = "${openstack_networking_network_v2.network_1.id}"
-  neutron_subnet_id   = "${openstack_networking_subnet_v2.subnet_1.id}"
+  neutron_net_id      = openstack_networking_network_v2.network_1.id
+  neutron_subnet_id   = openstack_networking_subnet_v2.subnet_1.id
   security_service_ids = [
-    "${openstack_sharedfilesystem_securityservice_v2.securityservice_1.id}",
+    openstack_sharedfilesystem_securityservice_v2.securityservice_1.id,
   ]
 }
 `, testAccSFSV2ShareNetworkConfig, testAccSFSV2ShareNetworkConfigSecService)
@@ -346,11 +358,11 @@ func testAccSFSV2ShareNetworkConfigSecService2() string {
 resource "openstack_sharedfilesystem_sharenetwork_v2" "sharenetwork_1" {
   name                = "test_sharenetwork_secure"
   description         = "share the secure love"
-  neutron_net_id      = "${openstack_networking_network_v2.network_1.id}"
-  neutron_subnet_id   = "${openstack_networking_subnet_v2.subnet_1.id}"
+  neutron_net_id      = openstack_networking_network_v2.network_1.id
+  neutron_subnet_id   = openstack_networking_subnet_v2.subnet_1.id
   security_service_ids = [
-    "${openstack_sharedfilesystem_securityservice_v2.securityservice_1.id}",
-    "${openstack_sharedfilesystem_securityservice_v2.securityservice_2.id}",
+    openstack_sharedfilesystem_securityservice_v2.securityservice_1.id,
+    openstack_sharedfilesystem_securityservice_v2.securityservice_2.id,
   ]
 }
 `, testAccSFSV2ShareNetworkConfig, testAccSFSV2ShareNetworkConfigSecService)
@@ -365,10 +377,10 @@ func testAccSFSV2ShareNetworkConfigSecService3() string {
 resource "openstack_sharedfilesystem_sharenetwork_v2" "sharenetwork_1" {
   name                = "test_sharenetwork_secure"
   description         = "share the secure love"
-  neutron_net_id      = "${openstack_networking_network_v2.network_1.id}"
-  neutron_subnet_id   = "${openstack_networking_subnet_v2.subnet_1.id}"
+  neutron_net_id      = openstack_networking_network_v2.network_1.id
+  neutron_subnet_id   = openstack_networking_subnet_v2.subnet_1.id
   security_service_ids = [
-    "${openstack_sharedfilesystem_securityservice_v2.securityservice_2.id}",
+    openstack_sharedfilesystem_securityservice_v2.securityservice_2.id,
   ]
 }
 `, testAccSFSV2ShareNetworkConfig, testAccSFSV2ShareNetworkConfigSecService)
@@ -383,8 +395,8 @@ func testAccSFSV2ShareNetworkConfigSecService4() string {
 resource "openstack_sharedfilesystem_sharenetwork_v2" "sharenetwork_1" {
   name                = "test_sharenetwork"
   description         = "share the love"
-  neutron_net_id      = "${openstack_networking_network_v2.network_1.id}"
-  neutron_subnet_id   = "${openstack_networking_subnet_v2.subnet_1.id}"
+  neutron_net_id      = openstack_networking_network_v2.network_1.id
+  neutron_subnet_id   = openstack_networking_subnet_v2.subnet_1.id
 }
 `, testAccSFSV2ShareNetworkConfig, testAccSFSV2ShareNetworkConfigSecService)
 }

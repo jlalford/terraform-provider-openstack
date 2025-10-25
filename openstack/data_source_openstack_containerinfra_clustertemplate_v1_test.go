@@ -1,12 +1,13 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccContainerInfraV1ClusterTemplateDataSource_basic(t *testing.T) {
@@ -19,7 +20,7 @@ func TestAccContainerInfraV1ClusterTemplateDataSource_basic(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckContainerInfraV1ClusterTemplateDestroy,
+		CheckDestroy:      testAccCheckContainerInfraV1ClusterTemplateDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccContainerInfraV1ClusterTemplateBasic(clusterTemplateName),
@@ -80,7 +81,7 @@ func testAccCheckContainerInfraV1ClusterTemplateDataSourceID(n string) resource.
 		}
 
 		if ct.Primary.ID == "" {
-			return fmt.Errorf("Cluster template data source ID not set")
+			return errors.New("Cluster template data source ID not set")
 		}
 
 		return nil
@@ -92,7 +93,7 @@ func testAccContainerInfraV1ClusterTemplateDataSourceBasic(clusterTemplateResour
 %s
 
 data "openstack_containerinfra_clustertemplate_v1" "clustertemplate_1" {
-  name = "${openstack_containerinfra_clustertemplate_v1.clustertemplate_1.name}"
+  name = openstack_containerinfra_clustertemplate_v1.clustertemplate_1.name
 }
 `, clusterTemplateResource)
 }

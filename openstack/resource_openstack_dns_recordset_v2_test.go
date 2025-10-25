@@ -1,15 +1,16 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/dns/v2/recordsets"
+	"github.com/gophercloud/gophercloud/v2/openstack/dns/v2/recordsets"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func randomZoneName() string {
@@ -18,6 +19,7 @@ func randomZoneName() string {
 
 func TestAccDNSV2RecordSet_basic(t *testing.T) {
 	var recordset recordsets.RecordSet
+
 	zoneName := randomZoneName()
 
 	resource.Test(t, resource.TestCase{
@@ -27,12 +29,12 @@ func TestAccDNSV2RecordSet_basic(t *testing.T) {
 			testAccPreCheckDNS(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckDNSV2RecordSetDestroy,
+		CheckDestroy:      testAccCheckDNSV2RecordSetDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccDNSV2RecordSetBasic(zoneName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckDNSV2RecordSetExists("openstack_dns_recordset_v2.recordset_1", &recordset),
+					testAccCheckDNSV2RecordSetExists(t.Context(), "openstack_dns_recordset_v2.recordset_1", &recordset),
 					resource.TestCheckResourceAttr(
 						"openstack_dns_recordset_v2.recordset_1", "description", "a record set"),
 					resource.TestCheckTypeSetElemAttr(
@@ -59,6 +61,7 @@ func TestAccDNSV2RecordSet_basic(t *testing.T) {
 
 func TestAccDNSV2RecordSet_ipv6(t *testing.T) {
 	var recordset recordsets.RecordSet
+
 	zoneName := randomZoneName()
 
 	resource.Test(t, resource.TestCase{
@@ -68,12 +71,12 @@ func TestAccDNSV2RecordSet_ipv6(t *testing.T) {
 			testAccPreCheckDNS(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckDNSV2RecordSetDestroy,
+		CheckDestroy:      testAccCheckDNSV2RecordSetDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccDNSV2RecordSetIPv6(zoneName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckDNSV2RecordSetExists("openstack_dns_recordset_v2.recordset_1", &recordset),
+					testAccCheckDNSV2RecordSetExists(t.Context(), "openstack_dns_recordset_v2.recordset_1", &recordset),
 					resource.TestCheckResourceAttr(
 						"openstack_dns_recordset_v2.recordset_1", "description", "a record set"),
 					resource.TestCheckTypeSetElemAttr(
@@ -88,6 +91,7 @@ func TestAccDNSV2RecordSet_ipv6(t *testing.T) {
 
 func TestAccDNSV2RecordSet_readTTL(t *testing.T) {
 	var recordset recordsets.RecordSet
+
 	zoneName := randomZoneName()
 
 	resource.Test(t, resource.TestCase{
@@ -97,12 +101,12 @@ func TestAccDNSV2RecordSet_readTTL(t *testing.T) {
 			testAccPreCheckDNS(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckDNSV2RecordSetDestroy,
+		CheckDestroy:      testAccCheckDNSV2RecordSetDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccDNSV2RecordSetReadTTL(zoneName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckDNSV2RecordSetExists("openstack_dns_recordset_v2.recordset_1", &recordset),
+					testAccCheckDNSV2RecordSetExists(t.Context(), "openstack_dns_recordset_v2.recordset_1", &recordset),
 					resource.TestMatchResourceAttr(
 						"openstack_dns_recordset_v2.recordset_1", "ttl", regexp.MustCompile("^[0-9]+$")),
 				),
@@ -113,6 +117,7 @@ func TestAccDNSV2RecordSet_readTTL(t *testing.T) {
 
 func TestAccDNSV2RecordSet_ensureSameTTL(t *testing.T) {
 	var recordset recordsets.RecordSet
+
 	zoneName := randomZoneName()
 
 	resource.Test(t, resource.TestCase{
@@ -122,12 +127,12 @@ func TestAccDNSV2RecordSet_ensureSameTTL(t *testing.T) {
 			testAccPreCheckDNS(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckDNSV2RecordSetDestroy,
+		CheckDestroy:      testAccCheckDNSV2RecordSetDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccDNSV2RecordSetEnsureSameTTL1(zoneName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckDNSV2RecordSetExists("openstack_dns_recordset_v2.recordset_1", &recordset),
+					testAccCheckDNSV2RecordSetExists(t.Context(), "openstack_dns_recordset_v2.recordset_1", &recordset),
 					resource.TestCheckTypeSetElemAttr(
 						"openstack_dns_recordset_v2.recordset_1", "records.*", "10.1.0.1"),
 					resource.TestCheckResourceAttr(
@@ -149,6 +154,7 @@ func TestAccDNSV2RecordSet_ensureSameTTL(t *testing.T) {
 
 func TestAccDNSV2RecordSet_sudoProjectID(t *testing.T) {
 	var recordset recordsets.RecordSet
+
 	zoneName := randomZoneName()
 
 	resource.Test(t, resource.TestCase{
@@ -158,12 +164,12 @@ func TestAccDNSV2RecordSet_sudoProjectID(t *testing.T) {
 			testAccPreCheckDNS(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckDNSV2RecordSetDestroy,
+		CheckDestroy:      testAccCheckDNSV2RecordSetDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccDNSV2RecordSetSudoProjectID(zoneName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckDNSV2RecordSetExists("openstack_dns_recordset_v2.recordset_1", &recordset),
+					testAccCheckDNSV2RecordSetExists(t.Context(), "openstack_dns_recordset_v2.recordset_1", &recordset),
 					resource.TestCheckTypeSetElemAttr(
 						"openstack_dns_recordset_v2.recordset_1", "records.*", "10.1.0.1"),
 				),
@@ -172,33 +178,36 @@ func TestAccDNSV2RecordSet_sudoProjectID(t *testing.T) {
 	})
 }
 
-func testAccCheckDNSV2RecordSetDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	dnsClient, err := config.DNSV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack DNS client: %s", err)
-	}
+func testAccCheckDNSV2RecordSetDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_dns_recordset_v2" {
-			continue
-		}
-
-		zoneID, recordsetID, err := dnsRecordSetV2ParseID(rs.Primary.ID)
+		dnsClient, err := config.DNSV2Client(ctx, osRegionName)
 		if err != nil {
-			return err
+			return fmt.Errorf("Error creating OpenStack DNS client: %w", err)
 		}
 
-		_, err = recordsets.Get(dnsClient, zoneID, recordsetID).Extract()
-		if err == nil {
-			return fmt.Errorf("Record set still exists")
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_dns_recordset_v2" {
+				continue
+			}
+
+			zoneID, recordsetID, err := parsePairedIDs(rs.Primary.ID, "openstack_dns_recordset_v2")
+			if err != nil {
+				return err
+			}
+
+			_, err = recordsets.Get(ctx, dnsClient, zoneID, recordsetID).Extract()
+			if err == nil {
+				return errors.New("Record set still exists")
+			}
 		}
+
+		return nil
 	}
-
-	return nil
 }
 
-func testAccCheckDNSV2RecordSetExists(n string, recordset *recordsets.RecordSet) resource.TestCheckFunc {
+func testAccCheckDNSV2RecordSetExists(ctx context.Context, n string, recordset *recordsets.RecordSet) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -206,27 +215,28 @@ func testAccCheckDNSV2RecordSetExists(n string, recordset *recordsets.RecordSet)
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		dnsClient, err := config.DNSV2Client(osRegionName)
+
+		dnsClient, err := config.DNSV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack DNS client: %s", err)
+			return fmt.Errorf("Error creating OpenStack DNS client: %w", err)
 		}
 
-		zoneID, recordsetID, err := dnsRecordSetV2ParseID(rs.Primary.ID)
+		zoneID, recordsetID, err := parsePairedIDs(rs.Primary.ID, "openstack_dns_recordset_v2")
 		if err != nil {
 			return err
 		}
 
-		found, err := recordsets.Get(dnsClient, zoneID, recordsetID).Extract()
+		found, err := recordsets.Get(ctx, dnsClient, zoneID, recordsetID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != recordsetID {
-			return fmt.Errorf("Record set not found")
+			return errors.New("Record set not found")
 		}
 
 		*recordset = *found
@@ -237,17 +247,18 @@ func testAccCheckDNSV2RecordSetExists(n string, recordset *recordsets.RecordSet)
 
 func TestAccDNSV2RecordSet_ignoreStatusCheck(t *testing.T) {
 	var recordset recordsets.RecordSet
+
 	zoneName := randomZoneName()
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheckDNS(t) },
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckDNSV2RecordSetDestroy,
+		CheckDestroy:      testAccCheckDNSV2RecordSetDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccDNSV2RecordSetDisableCheck(zoneName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckDNSV2RecordSetExists("openstack_dns_recordset_v2.recordset_1", &recordset),
+					testAccCheckDNSV2RecordSetExists(t.Context(), "openstack_dns_recordset_v2.recordset_1", &recordset),
 					resource.TestCheckResourceAttr(
 						"openstack_dns_recordset_v2.recordset_1", "disable_status_check", "true"),
 				),
@@ -255,7 +266,7 @@ func TestAccDNSV2RecordSet_ignoreStatusCheck(t *testing.T) {
 			{
 				Config: testAccDNSV2RecordSetBasic(zoneName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckDNSV2RecordSetExists("openstack_dns_recordset_v2.recordset_1", &recordset),
+					testAccCheckDNSV2RecordSetExists(t.Context(), "openstack_dns_recordset_v2.recordset_1", &recordset),
 					resource.TestCheckResourceAttr(
 						"openstack_dns_recordset_v2.recordset_1", "disable_status_check", "false"),
 				),
@@ -275,7 +286,7 @@ func testAccDNSV2RecordSetBasic(zoneName string) string {
 		}
 
 		resource "openstack_dns_recordset_v2" "recordset_1" {
-			zone_id = "${openstack_dns_zone_v2.zone_1.id}"
+			zone_id = openstack_dns_zone_v2.zone_1.id
 			name = "%s"
 			type = "A"
 			description = "a record set"
@@ -296,7 +307,7 @@ func testAccDNSV2RecordSetUpdate(zoneName string) string {
 		}
 
 		resource "openstack_dns_recordset_v2" "recordset_1" {
-			zone_id = "${openstack_dns_zone_v2.zone_1.id}"
+			zone_id = openstack_dns_zone_v2.zone_1.id
 			name = "%s"
 			type = "A"
 			description = "an updated record set"
@@ -317,7 +328,7 @@ func testAccDNSV2RecordSetReadTTL(zoneName string) string {
 		}
 
 		resource "openstack_dns_recordset_v2" "recordset_1" {
-			zone_id = "${openstack_dns_zone_v2.zone_1.id}"
+			zone_id = openstack_dns_zone_v2.zone_1.id
 			name = "%s"
 			type = "A"
 			records = ["10.1.0.2"]
@@ -336,7 +347,7 @@ func testAccDNSV2RecordSetIPv6(zoneName string) string {
 		}
 
 		resource "openstack_dns_recordset_v2" "recordset_1" {
-			zone_id = "${openstack_dns_zone_v2.zone_1.id}"
+			zone_id = openstack_dns_zone_v2.zone_1.id
 			name = "%s"
 			type = "AAAA"
 			description = "a record set"
@@ -356,7 +367,7 @@ func testAccDNSV2RecordSetEnsureSameTTL1(zoneName string) string {
 		}
 
 		resource "openstack_dns_recordset_v2" "recordset_1" {
-			zone_id = "${openstack_dns_zone_v2.zone_1.id}"
+			zone_id = openstack_dns_zone_v2.zone_1.id
 			name = "%s"
 			type = "A"
 			ttl = 3000
@@ -375,7 +386,7 @@ func testAccDNSV2RecordSetEnsureSameTTL2(zoneName string) string {
 		}
 
 		resource "openstack_dns_recordset_v2" "recordset_1" {
-			zone_id = "${openstack_dns_zone_v2.zone_1.id}"
+			zone_id = openstack_dns_zone_v2.zone_1.id
 			name = "%s"
 			type = "A"
 			ttl = 3000
@@ -395,7 +406,7 @@ func testAccDNSV2RecordSetDisableCheck(zoneName string) string {
 		}
 
 		resource "openstack_dns_recordset_v2" "recordset_1" {
-			zone_id = "${openstack_dns_zone_v2.zone_1.id}"
+			zone_id = openstack_dns_zone_v2.zone_1.id
 			name = "%s"
 			type = "A"
 			description = "a record set"
@@ -416,12 +427,12 @@ func testAccDNSV2RecordSetSudoProjectID(zoneName string) string {
 		}
 
 		resource "openstack_dns_recordset_v2" "recordset_1" {
-			zone_id = "${openstack_dns_zone_v2.zone_1.id}"
+			zone_id = openstack_dns_zone_v2.zone_1.id
 			name = "%s"
 			type = "A"
 			ttl = 3000
 			records = ["10.1.0.1"]
-            project_id = "${openstack_dns_zone_v2.zone_1.project_id}"
+            project_id = openstack_dns_zone_v2.zone_1.project_id
 		}
 	`, zoneName, zoneName)
 }

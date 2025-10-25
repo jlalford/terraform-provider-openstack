@@ -5,10 +5,9 @@ import (
 	"log"
 	"time"
 
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/users"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/users"
 )
 
 func dataSourceIdentityUserV3() *schema.Resource {
@@ -20,7 +19,6 @@ func dataSourceIdentityUserV3() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
-				ForceNew: true,
 			},
 
 			"default_project_id": {
@@ -37,7 +35,7 @@ func dataSourceIdentityUserV3() *schema.Resource {
 			"enabled": {
 				Type:     schema.TypeBool,
 				Optional: true,
-				Default:  true,
+				Computed: true,
 			},
 
 			"idp_id": {
@@ -75,17 +73,24 @@ func dataSourceIdentityUserV3() *schema.Resource {
 }
 
 // dataSourceIdentityUserV3Read performs the user lookup.
-func dataSourceIdentityUserV3Read(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func dataSourceIdentityUserV3Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	identityClient, err := config.IdentityV3Client(GetRegion(d, config))
+
+	identityClient, err := config.IdentityV3Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack identity client: %s", err)
 	}
 
-	enabled := d.Get("enabled").(bool)
+	var enabled *bool
+
+	if v, ok := getOkExists(d, "enabled"); ok {
+		v := v.(bool)
+		enabled = &v
+	}
+
 	listOpts := users.ListOpts{
 		DomainID:          d.Get("domain_id").(string),
-		Enabled:           &enabled,
+		Enabled:           enabled,
 		IdPID:             d.Get("idp_id").(string),
 		Name:              d.Get("name").(string),
 		PasswordExpiresAt: d.Get("password_expires_at").(string),
@@ -96,7 +101,8 @@ func dataSourceIdentityUserV3Read(ctx context.Context, d *schema.ResourceData, m
 	log.Printf("[DEBUG] openstack_identity_user_v3 list options: %#v", listOpts)
 
 	var user users.User
-	allPages, err := users.List(identityClient, listOpts).AllPages()
+
+	allPages, err := users.List(identityClient, listOpts).AllPages(ctx)
 	if err != nil {
 		return diag.Errorf("Unable to query openstack_identity_user_v3: %s", err)
 	}
@@ -118,6 +124,7 @@ func dataSourceIdentityUserV3Read(ctx context.Context, d *schema.ResourceData, m
 	user = allUsers[0]
 
 	dataSourceIdentityUserV3Attributes(d, &user)
+	d.Set("region", GetRegion(d, config))
 
 	return nil
 }

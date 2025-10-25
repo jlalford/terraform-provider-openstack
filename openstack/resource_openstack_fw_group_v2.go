@@ -5,11 +5,10 @@ import (
 	"log"
 	"time"
 
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/fwaas_v2/groups"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/fwaas_v2/groups"
 )
 
 func resourceFWGroupV2() *schema.Resource {
@@ -100,9 +99,10 @@ func resourceFWGroupV2() *schema.Resource {
 	}
 }
 
-func resourceFWGroupV2Create(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceFWGroupV2Create(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
@@ -128,27 +128,27 @@ func resourceFWGroupV2Create(ctx context.Context, d *schema.ResourceData, meta i
 
 	associatedPortsRaw := d.Get("ports").(*schema.Set).List()
 	if len(associatedPortsRaw) > 0 {
-		var portIds []string
+		var portIDs []string
 		for _, v := range associatedPortsRaw {
-			portIds = append(portIds, v.(string))
+			portIDs = append(portIDs, v.(string))
 		}
 
-		groupcreateOpts.Ports = portIds
+		groupcreateOpts.Ports = portIDs
 	}
 
 	log.Printf("[DEBUG] openstack_fw_group_v2 create options: %#v", groupcreateOpts)
 
-	group, err := groups.Create(networkingClient, groupcreateOpts).Extract()
+	group, err := groups.Create(ctx, networkingClient, groupcreateOpts).Extract()
 	if err != nil {
 		return diag.Errorf("Error creating openstack_fw_group_v2: %s", err)
 	}
 
 	log.Printf("[DEBUG] Created openstack_fw_group_v2 %s: %#v", group.ID, group)
 
-	stateConf := &resource.StateChangeConf{
+	stateConf := &retry.StateChangeConf{
 		Pending:    []string{"PENDING_CREATE"},
 		Target:     []string{"ACTIVE", "INACTIVE", "DOWN"},
-		Refresh:    fwGroupV2RefreshFunc(networkingClient, group.ID),
+		Refresh:    fwGroupV2RefreshFunc(ctx, networkingClient, group.ID),
 		Timeout:    d.Timeout(schema.TimeoutCreate),
 		Delay:      0,
 		MinTimeout: 2 * time.Second,
@@ -164,14 +164,15 @@ func resourceFWGroupV2Create(ctx context.Context, d *schema.ResourceData, meta i
 	return resourceFWGroupV2Read(ctx, d, meta)
 }
 
-func resourceFWGroupV2Read(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceFWGroupV2Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
 
-	group, err := groups.Get(networkingClient, d.Id()).Extract()
+	group, err := groups.Get(ctx, networkingClient, d.Id()).Extract()
 	if err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "Error retrieving openstack_fw_group_v2"))
 	}
@@ -193,14 +194,15 @@ func resourceFWGroupV2Read(_ context.Context, d *schema.ResourceData, meta inter
 	return nil
 }
 
-func resourceFWGroupV2Update(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceFWGroupV2Update(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
 
-	group, err := groups.Get(networkingClient, d.Id()).Extract()
+	group, err := groups.Get(ctx, networkingClient, d.Id()).Extract()
 	if err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "Error retrieving openstack_fw_group_v2"))
 	}
@@ -227,11 +229,12 @@ func resourceFWGroupV2Update(ctx context.Context, d *schema.ResourceData, meta i
 		if ingressFirewallPolicyID == "" {
 			log.Printf("[DEBUG] Attempting to clear ingress policy of openstack_fw_group_v2: %s.", group.ID)
 
-			err := fwGroupV2IngressPolicyDeleteFunc(networkingClient, d, ctx, group.ID)
+			err := fwGroupV2IngressPolicyDeleteFunc(ctx, networkingClient, d, group.ID)
 			if err != nil {
 				return err
 			}
 		}
+
 		if len(ingressFirewallPolicyID) > 0 {
 			hasChange = true
 			updateOpts.IngressFirewallPolicyID = &ingressFirewallPolicyID
@@ -243,11 +246,12 @@ func resourceFWGroupV2Update(ctx context.Context, d *schema.ResourceData, meta i
 		if egressFirewallPolicyID == "" {
 			log.Printf("[DEBUG] Attempting to clear egress policy of openstack_fw_group_v2: %s.", group.ID)
 
-			err := fwGroupV2EgressPolicyDeleteFunc(networkingClient, d, ctx, group.ID)
+			err := fwGroupV2EgressPolicyDeleteFunc(ctx, networkingClient, d, group.ID)
 			if err != nil {
 				return err
 			}
 		}
+
 		if len(egressFirewallPolicyID) > 0 {
 			hasChange = true
 			updateOpts.EgressFirewallPolicyID = &egressFirewallPolicyID
@@ -266,32 +270,35 @@ func resourceFWGroupV2Update(ctx context.Context, d *schema.ResourceData, meta i
 		updateOpts.AdminStateUp = &adminStateUp
 	}
 
-	var portIds []string
+	var portIDs []string
+
 	if d.HasChange("ports") {
 		hasChange = true
 		emptyList := make([]string, 0)
 		updateOpts.Ports = &emptyList
+
 		if _, ok := d.GetOk("ports"); ok {
 			associatedPortsRaw := d.Get("ports").(*schema.Set).List()
 			for _, v := range associatedPortsRaw {
-				portIds = append(portIds, v.(string))
+				portIDs = append(portIDs, v.(string))
 			}
-			updateOpts.Ports = &portIds
+
+			updateOpts.Ports = &portIDs
 		}
 	}
 
 	if hasChange {
 		log.Printf("[DEBUG] openstack_fw_group_v2 %s update options: %#v", d.Id(), updateOpts)
 
-		_, err = groups.Update(networkingClient, d.Id(), updateOpts).Extract()
+		_, err = groups.Update(ctx, networkingClient, d.Id(), updateOpts).Extract()
 		if err != nil {
 			return diag.Errorf("Error updating openstack_fw_group_v2 %s: %s", d.Id(), err)
 		}
 
-		stateConf := &resource.StateChangeConf{
+		stateConf := &retry.StateChangeConf{
 			Pending:    []string{"PENDING_CREATE", "PENDING_UPDATE"},
 			Target:     []string{"ACTIVE", "INACTIVE", "DOWN"},
-			Refresh:    fwGroupV2RefreshFunc(networkingClient, d.Id()),
+			Refresh:    fwGroupV2RefreshFunc(ctx, networkingClient, d.Id()),
 			Timeout:    d.Timeout(schema.TimeoutUpdate),
 			Delay:      0,
 			MinTimeout: 2 * time.Second,
@@ -306,51 +313,54 @@ func resourceFWGroupV2Update(ctx context.Context, d *schema.ResourceData, meta i
 	return resourceFWGroupV2Read(ctx, d, meta)
 }
 
-func resourceFWGroupV2Delete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceFWGroupV2Delete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
 
-	group, err := groups.Get(networkingClient, d.Id()).Extract()
+	group, err := groups.Get(ctx, networkingClient, d.Id()).Extract()
 	if err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "Error retrieving openstack_fw_group_v2"))
 	}
 
 	if len(group.Ports) > 0 {
 		var updateGroupOpts groups.UpdateOpts
+
 		emptyPorts := []string{}
 		updateGroupOpts.Ports = &emptyPorts
-		_, err := groups.Update(networkingClient, group.ID, updateGroupOpts).Extract()
+
+		_, err := groups.Update(ctx, networkingClient, group.ID, updateGroupOpts).Extract()
 		if err != nil {
 			return diag.Errorf("Error removing ports from openstack_fw_group_v2 %s: %s", d.Id(), err)
 		}
 	}
 
 	if group.IngressFirewallPolicyID != "" {
-		diagErr := fwGroupV2IngressPolicyDeleteFunc(networkingClient, d, ctx, group.ID)
+		diagErr := fwGroupV2IngressPolicyDeleteFunc(ctx, networkingClient, d, group.ID)
 		if diagErr != nil {
 			return diagErr
 		}
 	}
 
 	if group.EgressFirewallPolicyID != "" {
-		diagErr := fwGroupV2EgressPolicyDeleteFunc(networkingClient, d, ctx, group.ID)
+		diagErr := fwGroupV2EgressPolicyDeleteFunc(ctx, networkingClient, d, group.ID)
 		if diagErr != nil {
 			return diagErr
 		}
 	}
 
-	err = groups.Delete(networkingClient, d.Id()).ExtractErr()
+	err = groups.Delete(ctx, networkingClient, d.Id()).ExtractErr()
 	if err != nil {
-		return diag.Errorf("Error deleting openstack_fw_group_v2 %s: %s", d.Id(), err)
+		return diag.FromErr(CheckDeleted(d, err, "Error deleting openstack_fw_group_v2"))
 	}
 
-	stateConf := &resource.StateChangeConf{
+	stateConf := &retry.StateChangeConf{
 		Pending:    []string{"DELETING"},
 		Target:     []string{"DELETED"},
-		Refresh:    fwGroupV2DeleteFunc(networkingClient, d.Id()),
+		Refresh:    fwGroupV2DeleteFunc(ctx, networkingClient, d.Id()),
 		Timeout:    d.Timeout(schema.TimeoutDelete),
 		Delay:      0,
 		MinTimeout: 2 * time.Second,

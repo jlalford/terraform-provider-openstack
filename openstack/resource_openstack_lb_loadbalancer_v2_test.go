@@ -1,22 +1,23 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/loadbalancers"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/security/groups"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
+	"github.com/gophercloud/gophercloud/v2/openstack/loadbalancer/v2/loadbalancers"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/security/groups"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/ports"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccLBV2LoadBalancer_basic(t *testing.T) {
 	var lb loadbalancers.LoadBalancer
 
-	var lbProvider = "octavia"
+	lbProvider := "octavia"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -25,22 +26,22 @@ func TestAccLBV2LoadBalancer_basic(t *testing.T) {
 			testAccPreCheckLB(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckLBV2LoadBalancerDestroy,
+		CheckDestroy:      testAccCheckLBV2LoadBalancerDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccLbV2LoadBalancerConfigBasic(lbProvider),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckLBV2LoadBalancerExists("openstack_lb_loadbalancer_v2.loadbalancer_1", &lb),
-					testAccCheckLBV2LoadBalancerHasTag("openstack_lb_loadbalancer_v2.loadbalancer_1", "tag1"),
-					testAccCheckLBV2LoadBalancerTagCount("openstack_lb_loadbalancer_v2.loadbalancer_1", 1),
+					testAccCheckLBV2LoadBalancerExists(t.Context(), "openstack_lb_loadbalancer_v2.loadbalancer_1", &lb),
+					testAccCheckLBV2LoadBalancerHasTag(t.Context(), "openstack_lb_loadbalancer_v2.loadbalancer_1", "tag1"),
+					testAccCheckLBV2LoadBalancerTagCount(t.Context(), "openstack_lb_loadbalancer_v2.loadbalancer_1", 1),
 				),
 			},
 			{
 				Config: testAccLbV2LoadBalancerConfigUpdate(lbProvider),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckLBV2LoadBalancerHasTag("openstack_lb_loadbalancer_v2.loadbalancer_1", "tag1"),
-					testAccCheckLBV2LoadBalancerHasTag("openstack_lb_loadbalancer_v2.loadbalancer_1", "tag2"),
-					testAccCheckLBV2LoadBalancerTagCount("openstack_lb_loadbalancer_v2.loadbalancer_1", 2),
+					testAccCheckLBV2LoadBalancerHasTag(t.Context(), "openstack_lb_loadbalancer_v2.loadbalancer_1", "tag1"),
+					testAccCheckLBV2LoadBalancerHasTag(t.Context(), "openstack_lb_loadbalancer_v2.loadbalancer_1", "tag2"),
+					testAccCheckLBV2LoadBalancerTagCount(t.Context(), "openstack_lb_loadbalancer_v2.loadbalancer_1", 2),
 					resource.TestCheckResourceAttr(
 						"openstack_lb_loadbalancer_v2.loadbalancer_1", "name", "loadbalancer_1_updated"),
 					resource.TestMatchResourceAttr(
@@ -54,6 +55,7 @@ func TestAccLBV2LoadBalancer_basic(t *testing.T) {
 
 func TestAccLBV2LoadBalancer_secGroup(t *testing.T) {
 	var lb loadbalancers.LoadBalancer
+
 	var sg1, sg2 groups.SecGroup
 
 	resource.Test(t, resource.TestCase{
@@ -63,49 +65,49 @@ func TestAccLBV2LoadBalancer_secGroup(t *testing.T) {
 			testAccPreCheckLB(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckLBV2LoadBalancerDestroy,
+		CheckDestroy:      testAccCheckLBV2LoadBalancerDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccLbV2LoadBalancerSecGroup,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckLBV2LoadBalancerExists(
+					testAccCheckLBV2LoadBalancerExists(t.Context(),
 						"openstack_lb_loadbalancer_v2.loadbalancer_1", &lb),
-					testAccCheckNetworkingV2SecGroupExists(
+					testAccCheckNetworkingV2SecGroupExists(t.Context(),
 						"openstack_networking_secgroup_v2.secgroup_1", &sg1),
-					testAccCheckNetworkingV2SecGroupExists(
+					testAccCheckNetworkingV2SecGroupExists(t.Context(),
 						"openstack_networking_secgroup_v2.secgroup_1", &sg2),
 					resource.TestCheckResourceAttr(
 						"openstack_lb_loadbalancer_v2.loadbalancer_1", "security_group_ids.#", "1"),
-					testAccCheckLBV2LoadBalancerHasSecGroup(&lb, &sg1),
+					testAccCheckLBV2LoadBalancerHasSecGroup(t.Context(), &lb, &sg1),
 				),
 			},
 			{
 				Config: testAccLbV2LoadBalancerSecGroupUpdate1,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckLBV2LoadBalancerExists(
+					testAccCheckLBV2LoadBalancerExists(t.Context(),
 						"openstack_lb_loadbalancer_v2.loadbalancer_1", &lb),
-					testAccCheckNetworkingV2SecGroupExists(
+					testAccCheckNetworkingV2SecGroupExists(t.Context(),
 						"openstack_networking_secgroup_v2.secgroup_2", &sg1),
-					testAccCheckNetworkingV2SecGroupExists(
+					testAccCheckNetworkingV2SecGroupExists(t.Context(),
 						"openstack_networking_secgroup_v2.secgroup_2", &sg2),
 					resource.TestCheckResourceAttr(
 						"openstack_lb_loadbalancer_v2.loadbalancer_1", "security_group_ids.#", "2"),
-					testAccCheckLBV2LoadBalancerHasSecGroup(&lb, &sg1),
-					testAccCheckLBV2LoadBalancerHasSecGroup(&lb, &sg2),
+					testAccCheckLBV2LoadBalancerHasSecGroup(t.Context(), &lb, &sg1),
+					testAccCheckLBV2LoadBalancerHasSecGroup(t.Context(), &lb, &sg2),
 				),
 			},
 			{
 				Config: testAccLbV2LoadBalancerSecGroupUpdate2,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckLBV2LoadBalancerExists(
+					testAccCheckLBV2LoadBalancerExists(t.Context(),
 						"openstack_lb_loadbalancer_v2.loadbalancer_1", &lb),
-					testAccCheckNetworkingV2SecGroupExists(
+					testAccCheckNetworkingV2SecGroupExists(t.Context(),
 						"openstack_networking_secgroup_v2.secgroup_2", &sg1),
-					testAccCheckNetworkingV2SecGroupExists(
+					testAccCheckNetworkingV2SecGroupExists(t.Context(),
 						"openstack_networking_secgroup_v2.secgroup_2", &sg2),
 					resource.TestCheckResourceAttr(
 						"openstack_lb_loadbalancer_v2.loadbalancer_1", "security_group_ids.#", "1"),
-					testAccCheckLBV2LoadBalancerHasSecGroup(&lb, &sg2),
+					testAccCheckLBV2LoadBalancerHasSecGroup(t.Context(), &lb, &sg2),
 				),
 			},
 		},
@@ -122,12 +124,12 @@ func TestAccLBV2LoadBalancer_vip_network(t *testing.T) {
 			testAccPreCheckLB(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckLBV2LoadBalancerDestroy,
+		CheckDestroy:      testAccCheckLBV2LoadBalancerDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccLbV2LoadBalancerConfigVIPNetwork,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckLBV2LoadBalancerExists("openstack_lb_loadbalancer_v2.loadbalancer_1", &lb),
+					testAccCheckLBV2LoadBalancerExists(t.Context(), "openstack_lb_loadbalancer_v2.loadbalancer_1", &lb),
 				),
 			},
 		},
@@ -136,6 +138,7 @@ func TestAccLBV2LoadBalancer_vip_network(t *testing.T) {
 
 func TestAccLBV2LoadBalancer_vip_port_id(t *testing.T) {
 	var lb loadbalancers.LoadBalancer
+
 	var port ports.Port
 
 	resource.Test(t, resource.TestCase{
@@ -145,14 +148,14 @@ func TestAccLBV2LoadBalancer_vip_port_id(t *testing.T) {
 			testAccPreCheckLB(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckLBV2LoadBalancerDestroy,
+		CheckDestroy:      testAccCheckLBV2LoadBalancerDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccLbV2LoadBalancerConfigVIPPortID,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckLBV2LoadBalancerExists(
+					testAccCheckLBV2LoadBalancerExists(t.Context(),
 						"openstack_lb_loadbalancer_v2.loadbalancer_1", &lb),
-					testAccCheckNetworkingV2PortExists(
+					testAccCheckNetworkingV2PortExists(t.Context(),
 						"openstack_networking_port_v2.port_1", &port),
 					resource.TestCheckResourceAttrPtr(
 						"openstack_lb_loadbalancer_v2.loadbalancer_1", "vip_port_id", &port.ID),
@@ -162,29 +165,33 @@ func TestAccLBV2LoadBalancer_vip_port_id(t *testing.T) {
 	})
 }
 
-func testAccCheckLBV2LoadBalancerDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	lbClient, err := config.LoadBalancerV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack load balancing client: %s", err)
-	}
+func testAccCheckLBV2LoadBalancerDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_lb_loadbalancer_v2" {
-			continue
+		lbClient, err := config.LoadBalancerV2Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack load balancing client: %w", err)
 		}
 
-		lb, err := loadbalancers.Get(lbClient, rs.Primary.ID).Extract()
-		if err == nil && lb.ProvisioningStatus != "DELETED" {
-			return fmt.Errorf("LoadBalancer still exists: %s", rs.Primary.ID)
-		}
-	}
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_lb_loadbalancer_v2" {
+				continue
+			}
 
-	return nil
+			lb, err := loadbalancers.Get(ctx, lbClient, rs.Primary.ID).Extract()
+			if err == nil && lb.ProvisioningStatus != "DELETED" {
+				return fmt.Errorf("LoadBalancer still exists: %s", rs.Primary.ID)
+			}
+		}
+
+		return nil
+	}
 }
 
-func testAccCheckLBV2LoadBalancerExists(
-	n string, lb *loadbalancers.LoadBalancer) resource.TestCheckFunc {
+func testAccCheckLBV2LoadBalancerExists(ctx context.Context,
+	n string, lb *loadbalancers.LoadBalancer,
+) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -192,22 +199,23 @@ func testAccCheckLBV2LoadBalancerExists(
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		lbClient, err := config.LoadBalancerV2Client(osRegionName)
+
+		lbClient, err := config.LoadBalancerV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack load balancing client: %s", err)
+			return fmt.Errorf("Error creating OpenStack load balancing client: %w", err)
 		}
 
-		found, err := loadbalancers.Get(lbClient, rs.Primary.ID).Extract()
+		found, err := loadbalancers.Get(ctx, lbClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Loadbalancer not found")
+			return errors.New("Loadbalancer not found")
 		}
 
 		*lb = *found
@@ -215,7 +223,8 @@ func testAccCheckLBV2LoadBalancerExists(
 		return nil
 	}
 }
-func testAccCheckLBV2LoadBalancerHasTag(n, tag string) resource.TestCheckFunc {
+
+func testAccCheckLBV2LoadBalancerHasTag(ctx context.Context, n, tag string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -223,22 +232,23 @@ func testAccCheckLBV2LoadBalancerHasTag(n, tag string) resource.TestCheckFunc {
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		lbClient, err := config.LoadBalancerV2Client(osRegionName)
+
+		lbClient, err := config.LoadBalancerV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack load balancing client: %s", err)
+			return fmt.Errorf("Error creating OpenStack load balancing client: %w", err)
 		}
 
-		found, err := loadbalancers.Get(lbClient, rs.Primary.ID).Extract()
+		found, err := loadbalancers.Get(ctx, lbClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Loadbalancer not found")
+			return errors.New("Loadbalancer not found")
 		}
 
 		for _, v := range found.Tags {
@@ -251,7 +261,7 @@ func testAccCheckLBV2LoadBalancerHasTag(n, tag string) resource.TestCheckFunc {
 	}
 }
 
-func testAccCheckLBV2LoadBalancerTagCount(n string, expected int) resource.TestCheckFunc {
+func testAccCheckLBV2LoadBalancerTagCount(ctx context.Context, n string, expected int) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -259,22 +269,23 @@ func testAccCheckLBV2LoadBalancerTagCount(n string, expected int) resource.TestC
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		lbClient, err := config.LoadBalancerV2Client(osRegionName)
+
+		lbClient, err := config.LoadBalancerV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack load balancing client: %s", err)
+			return fmt.Errorf("Error creating OpenStack load balancing client: %w", err)
 		}
 
-		found, err := loadbalancers.Get(lbClient, rs.Primary.ID).Extract()
+		found, err := loadbalancers.Get(ctx, lbClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Loadbalancer not found")
+			return errors.New("Loadbalancer not found")
 		}
 
 		if len(found.Tags) != expected {
@@ -285,16 +296,18 @@ func testAccCheckLBV2LoadBalancerTagCount(n string, expected int) resource.TestC
 	}
 }
 
-func testAccCheckLBV2LoadBalancerHasSecGroup(
-	lb *loadbalancers.LoadBalancer, sg *groups.SecGroup) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
+func testAccCheckLBV2LoadBalancerHasSecGroup(ctx context.Context,
+	lb *loadbalancers.LoadBalancer, sg *groups.SecGroup,
+) resource.TestCheckFunc {
+	return func(_ *terraform.State) error {
 		config := testAccProvider.Meta().(*Config)
-		networkingClient, err := config.NetworkingV2Client(osRegionName)
+
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack networking client: %s", err)
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
 		}
 
-		port, err := ports.Get(networkingClient, lb.VipPortID).Extract()
+		port, err := ports.Get(ctx, networkingClient, lb.VipPortID).Extract()
 		if err != nil {
 			return err
 		}
@@ -305,7 +318,7 @@ func testAccCheckLBV2LoadBalancerHasSecGroup(
 			}
 		}
 
-		return fmt.Errorf("LoadBalancer does not have the security group")
+		return errors.New("LoadBalancer does not have the security group")
 	}
 }
 
@@ -320,13 +333,13 @@ func testAccLbV2LoadBalancerConfigBasic(lbProvider string) string {
       name = "subnet_1"
       cidr = "192.168.199.0/24"
       ip_version = 4
-      network_id = "${openstack_networking_network_v2.network_1.id}"
+      network_id = openstack_networking_network_v2.network_1.id
     }
 
     resource "openstack_lb_loadbalancer_v2" "loadbalancer_1" {
       name = "loadbalancer_1"
       loadbalancer_provider = "%s"
-      vip_subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+      vip_subnet_id = openstack_networking_subnet_v2.subnet_1.id
 	  tags = ["tag1"]
 
       timeouts {
@@ -348,14 +361,14 @@ func testAccLbV2LoadBalancerConfigUpdate(lbProvider string) string {
       name = "subnet_1"
       cidr = "192.168.199.0/24"
       ip_version = 4
-      network_id = "${openstack_networking_network_v2.network_1.id}"
+      network_id = openstack_networking_network_v2.network_1.id
     }
 
     resource "openstack_lb_loadbalancer_v2" "loadbalancer_1" {
       name = "loadbalancer_1_updated"
       loadbalancer_provider = "%s"
       admin_state_up = "true"
-      vip_subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+      vip_subnet_id = openstack_networking_subnet_v2.subnet_1.id
 	  tags = ["tag1", "tag2"]
 
       timeouts {
@@ -384,15 +397,15 @@ resource "openstack_networking_network_v2" "network_1" {
 
 resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
   cidr = "192.168.199.0/24"
 }
 
 resource "openstack_lb_loadbalancer_v2" "loadbalancer_1" {
     name = "loadbalancer_1"
-    vip_subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+    vip_subnet_id = openstack_networking_subnet_v2.subnet_1.id
     security_group_ids = [
-      "${openstack_networking_secgroup_v2.secgroup_1.id}"
+      openstack_networking_secgroup_v2.secgroup_1.id
     ]
 
     timeouts {
@@ -421,16 +434,16 @@ resource "openstack_networking_network_v2" "network_1" {
 
 resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
   cidr = "192.168.199.0/24"
 }
 
 resource "openstack_lb_loadbalancer_v2" "loadbalancer_1" {
   name = "loadbalancer_1"
-  vip_subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+  vip_subnet_id = openstack_networking_subnet_v2.subnet_1.id
   security_group_ids = [
-    "${openstack_networking_secgroup_v2.secgroup_1.id}",
-    "${openstack_networking_secgroup_v2.secgroup_2.id}"
+    openstack_networking_secgroup_v2.secgroup_1.id,
+    openstack_networking_secgroup_v2.secgroup_2.id
   ]
 
   timeouts {
@@ -459,15 +472,15 @@ resource "openstack_networking_network_v2" "network_1" {
 
 resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
   cidr = "192.168.199.0/24"
 }
 
 resource "openstack_lb_loadbalancer_v2" "loadbalancer_1" {
   name = "loadbalancer_1"
-  vip_subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+  vip_subnet_id = openstack_networking_subnet_v2.subnet_1.id
   security_group_ids = [
-    "${openstack_networking_secgroup_v2.secgroup_2.id}"
+    openstack_networking_secgroup_v2.secgroup_2.id
   ]
   depends_on = ["openstack_networking_secgroup_v2.secgroup_1"]
 
@@ -489,13 +502,13 @@ resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
   cidr = "192.168.199.0/24"
   ip_version = 4
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 }
 
 resource "openstack_lb_loadbalancer_v2" "loadbalancer_1" {
   name = "loadbalancer_1"
   loadbalancer_provider = "octavia"
-  vip_network_id = "${openstack_networking_network_v2.network_1.id}"
+  vip_network_id = openstack_networking_network_v2.network_1.id
   depends_on = ["openstack_networking_subnet_v2.subnet_1"]
   timeouts {
     create = "15m"
@@ -515,12 +528,12 @@ resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
   cidr = "192.168.199.0/24"
   ip_version = 4
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 }
 
 resource "openstack_networking_port_v2" "port_1" {
   name           = "port_1"
-  network_id     = "${openstack_networking_network_v2.network_1.id}"
+  network_id     = openstack_networking_network_v2.network_1.id
   admin_state_up = "true"
   depends_on = ["openstack_networking_subnet_v2.subnet_1"]
 }
@@ -528,7 +541,7 @@ resource "openstack_networking_port_v2" "port_1" {
 resource "openstack_lb_loadbalancer_v2" "loadbalancer_1" {
   name = "loadbalancer_1"
   loadbalancer_provider = "octavia"
-  vip_port_id = "${openstack_networking_port_v2.port_1.id}"
+  vip_port_id = openstack_networking_port_v2.port_1.id
   depends_on = ["openstack_networking_port_v2.port_1"]
   timeouts {
     create = "15m"

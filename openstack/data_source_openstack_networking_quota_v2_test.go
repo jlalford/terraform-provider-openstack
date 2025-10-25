@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccNetworkingV2QuotaDataSource(t *testing.T) {
@@ -46,7 +47,7 @@ func testAccCheckNetworkingQuotaV2DataSourceID(n string) resource.TestCheckFunc 
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Networking quota data source ID not set")
+			return errors.New("Networking quota data source ID not set")
 		}
 
 		return nil
@@ -64,7 +65,7 @@ func testAccNetworkingV2QuotaDataSourceSource() string {
 %s
 
 data "openstack_networking_quota_v2" "source" {
-  project_id = "${openstack_identity_project_v3.project.id}"
+  project_id = openstack_identity_project_v3.project.id
 }
 `, testAccNetworkingV2QuotaDataSourceBasic)
 }

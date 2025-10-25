@@ -200,10 +200,14 @@ resource "openstack_compute_instance_v2" "multi-net" {
   }
 }
 
-resource "openstack_compute_floatingip_associate_v2" "myip" {
+data "openstack_networking_port_v2" "vm-port" {
+  device_id  = openstack_compute_instance_v2.multi-net.id
+  network_id = openstack_compute_instance_v2.multi-net.network.1.uuid
+}
+
+resource "openstack_networking_floatingip_associate_v2" "fip_vm" {
   floating_ip = openstack_networking_floatingip_v2.myip.address
-  instance_id = openstack_compute_instance_v2.multi-net.id
-  fixed_ip    = openstack_compute_instance_v2.multi-net.network.1.fixed_ip_v4
+  port_id     = data.openstack_networking_port_v2.vm-port.id
 }
 ```
 
@@ -399,8 +403,9 @@ The following arguments are supported:
     the instance should be launched. The available hints are described below.
 
 * `personality` - (Optional) Customize the personality of an instance by
-    defining one or more files and their contents. The personality structure
-    is described below. Changing this rebuilds the existing server.
+  defining one or more files and their contents. The personality structure is
+  described below. Conflicts with `hypervisor_hostname`. Changing this rebuilds
+  the existing server.
 
 * `stop_before_destroy` - (Optional) Whether to try stop instance gracefully
     before destroying it, thus giving chance for guest OS daemons to stop correctly.
@@ -410,9 +415,9 @@ The following arguments are supported:
     forcefully deleted. This is useful for environments that have reclaim / soft
     deletion enabled.
 
-* `power_state` - (Optional) Provide the VM state. Only 'active', 'shutoff'
+* `power_state` - (Optional) Provide the VM state. Only 'active', 'shutoff', 'paused'
     and 'shelved_offloaded' are supported values.
-    *Note*: If the initial power_state is the shutoff
+    *Note*: If the initial power_state is the shutoff or paused
     the VM will be stopped immediately after build and the provisioners like
     remote-exec or files are not supported.
 
@@ -421,6 +426,13 @@ The following arguments are supported:
 
 * `vendor_options` - (Optional) Map of additional vendor-specific options.
     Supported options are described below.
+
+* `hypervisor_hostname` - (Optional) Specifies the exact hypervisor hostname on
+  which to create the instance. When provided, this parameter is included in
+  the request to Nova, directing the scheduler to launch the instance on the
+  specified host. Note: This option requires administrative privileges and a
+  Nova microversion of 2.74 or later. Conflicts with `personality`. Changing
+  this value forces a new instance to be created.
 
 The `network` block supports:
 

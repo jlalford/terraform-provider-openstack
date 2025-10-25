@@ -1,19 +1,20 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/db/v1/instances"
-	"github.com/gophercloud/gophercloud/openstack/db/v1/users"
+	"github.com/gophercloud/gophercloud/v2/openstack/db/v1/instances"
+	"github.com/gophercloud/gophercloud/v2/openstack/db/v1/users"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccDatabaseV1User_basic(t *testing.T) {
 	var user users.User
+
 	var instance instances.Instance
 
 	resource.Test(t, resource.TestCase{
@@ -23,14 +24,14 @@ func TestAccDatabaseV1User_basic(t *testing.T) {
 			testAccPreCheckDatabase(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckDatabaseV1UserDestroy,
+		CheckDestroy:      testAccCheckDatabaseV1UserDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccDatabaseV1UserBasic(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckDatabaseV1InstanceExists(
+					testAccCheckDatabaseV1InstanceExists(t.Context(),
 						"openstack_db_instance_v1.basic", &instance),
-					testAccCheckDatabaseV1UserExists(
+					testAccCheckDatabaseV1UserExists(t.Context(),
 						"openstack_db_user_v1.basic", &instance, &user),
 					resource.TestCheckResourceAttrPtr(
 						"openstack_db_user_v1.basic", "name", &user.Name),
@@ -40,7 +41,7 @@ func TestAccDatabaseV1User_basic(t *testing.T) {
 	})
 }
 
-func testAccCheckDatabaseV1UserExists(n string, instance *instances.Instance, user *users.User) resource.TestCheckFunc {
+func testAccCheckDatabaseV1UserExists(ctx context.Context, n string, instance *instances.Instance, user *users.User) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -48,33 +49,35 @@ func testAccCheckDatabaseV1UserExists(n string, instance *instances.Instance, us
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
-		parts := strings.SplitN(rs.Primary.ID, "/", 2)
-		if len(parts) != 2 {
-			return fmt.Errorf("Malformed user name: %s", rs.Primary.ID)
+		_, userName, err := parsePairedIDs(rs.Primary.ID, "openstack_db_user_v1")
+		if err != nil {
+			return err
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		DatabaseV1Client, err := config.DatabaseV1Client(osRegionName)
+
+		databaseV1Client, err := config.DatabaseV1Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating cloud database client: %s", err)
+			return fmt.Errorf("Error creating cloud database client: %w", err)
 		}
 
-		pages, err := users.List(DatabaseV1Client, instance.ID).AllPages()
+		pages, err := users.List(databaseV1Client, instance.ID).AllPages(ctx)
 		if err != nil {
-			return fmt.Errorf("Unable to retrieve users: %s", err)
+			return fmt.Errorf("Unable to retrieve users: %w", err)
 		}
 
 		allUsers, err := users.ExtractUsers(pages)
 		if err != nil {
-			return fmt.Errorf("Unable to extract users: %s", err)
+			return fmt.Errorf("Unable to extract users: %w", err)
 		}
 
 		for _, u := range allUsers {
-			if u.Name == parts[1] {
+			if u.Name == userName {
 				*user = u
+
 				return nil
 			}
 		}
@@ -83,47 +86,50 @@ func testAccCheckDatabaseV1UserExists(n string, instance *instances.Instance, us
 	}
 }
 
-func testAccCheckDatabaseV1UserDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
+func testAccCheckDatabaseV1UserDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	DatabaseV1Client, err := config.DatabaseV1Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating cloud database client: %s", err)
-	}
-
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_db_user_v1" {
-			continue
-		}
-
-		parts := strings.SplitN(rs.Primary.ID, "/", 2)
-		if len(parts) != 2 {
-			return fmt.Errorf("Malformed username: %s", rs.Primary.ID)
-		}
-
-		pages, err := users.List(DatabaseV1Client, parts[0]).AllPages()
+		databaseV1Client, err := config.DatabaseV1Client(ctx, osRegionName)
 		if err != nil {
-			return nil
+			return fmt.Errorf("Error creating cloud database client: %w", err)
 		}
 
-		allUsers, err := users.ExtractUsers(pages)
-		if err != nil {
-			return fmt.Errorf("Unable to extract users: %s", err)
-		}
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_db_user_v1" {
+				continue
+			}
 
-		var exists bool
-		for _, v := range allUsers {
-			if v.Name == parts[1] {
-				exists = true
+			id, userName, err := parsePairedIDs(rs.Primary.ID, "openstack_db_user_v1")
+			if err != nil {
+				return err
+			}
+
+			pages, err := users.List(databaseV1Client, id).AllPages(ctx)
+			if err != nil {
+				return nil
+			}
+
+			allUsers, err := users.ExtractUsers(pages)
+			if err != nil {
+				return fmt.Errorf("Unable to extract users: %w", err)
+			}
+
+			var exists bool
+
+			for _, v := range allUsers {
+				if v.Name == userName {
+					exists = true
+				}
+			}
+
+			if exists {
+				return errors.New("User still exists")
 			}
 		}
 
-		if exists {
-			return fmt.Errorf("User still exists")
-		}
+		return nil
 	}
-
-	return nil
 }
 
 func testAccDatabaseV1UserBasic() string {
@@ -145,7 +151,7 @@ resource "openstack_db_instance_v1" "basic" {
 
 resource "openstack_db_user_v1" "basic" {
   name        = "basic"
-  instance_id = "${openstack_db_instance_v1.basic.id}"
+  instance_id = openstack_db_instance_v1.basic.id
   password    = "password"
   databases   = ["testdb"]
 }

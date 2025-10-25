@@ -3,7 +3,7 @@ package openstack
 import (
 	"sort"
 
-	"github.com/gophercloud/gophercloud/openstack/blockstorage/v3/snapshots"
+	"github.com/gophercloud/gophercloud/v2/openstack/blockstorage/v3/snapshots"
 )
 
 // blockStorageV3SnapshotSort represents a sortable slice of block storage
@@ -21,11 +21,13 @@ func (snaphot blockStorageV3SnapshotSort) Swap(i, j int) {
 func (snaphot blockStorageV3SnapshotSort) Less(i, j int) bool {
 	itime := snaphot[i].CreatedAt
 	jtime := snaphot[j].CreatedAt
+
 	return itime.Unix() < jtime.Unix()
 }
 
 func dataSourceBlockStorageV3MostRecentSnapshot(snapshots []snapshots.Snapshot) snapshots.Snapshot {
 	sortedSnapshots := snapshots
 	sort.Sort(blockStorageV3SnapshotSort(sortedSnapshots))
+
 	return sortedSnapshots[len(sortedSnapshots)-1]
 }

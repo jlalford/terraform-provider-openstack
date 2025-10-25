@@ -1,17 +1,17 @@
 package openstack
 
 import (
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/floatingips"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/routers"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/subnetpools"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/vpnaas/endpointgroups"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/vpnaas/ikepolicies"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/vpnaas/ipsecpolicies"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/vpnaas/services"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/vpnaas/siteconnections"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/layer3/floatingips"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/layer3/routers"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/subnetpools"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/vpnaas/endpointgroups"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/vpnaas/ikepolicies"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/vpnaas/ipsecpolicies"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/vpnaas/services"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/vpnaas/siteconnections"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/networks"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/ports"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/subnets"
 )
 
 // FloatingIPCreateOpts represents the attributes used when creating a new floating ip.
@@ -22,7 +22,7 @@ type FloatingIPCreateOpts struct {
 
 // ToFloatingIPCreateMap casts a CreateOpts struct to a map.
 // It overrides floatingips.ToFloatingIPCreateMap to add the ValueSpecs field.
-func (opts FloatingIPCreateOpts) ToFloatingIPCreateMap() (map[string]interface{}, error) {
+func (opts FloatingIPCreateOpts) ToFloatingIPCreateMap() (map[string]any, error) {
 	return BuildRequest(opts, "floatingip")
 }
 
@@ -34,7 +34,7 @@ type NetworkCreateOpts struct {
 
 // ToNetworkCreateMap casts a CreateOpts struct to a map.
 // It overrides networks.ToNetworkCreateMap to add the ValueSpecs field.
-func (opts NetworkCreateOpts) ToNetworkCreateMap() (map[string]interface{}, error) {
+func (opts NetworkCreateOpts) ToNetworkCreateMap() (map[string]any, error) {
 	return BuildRequest(opts, "network")
 }
 
@@ -58,7 +58,7 @@ type PortCreateOpts struct {
 
 // ToPortCreateMap casts a CreateOpts struct to a map.
 // It overrides ports.ToPortCreateMap to add the ValueSpecs field.
-func (opts PortCreateOpts) ToPortCreateMap() (map[string]interface{}, error) {
+func (opts PortCreateOpts) ToPortCreateMap() (map[string]any, error) {
 	return BuildRequest(opts, "port")
 }
 
@@ -70,7 +70,7 @@ type RouterCreateOpts struct {
 
 // ToRouterCreateMap casts a CreateOpts struct to a map.
 // It overrides routers.ToRouterCreateMap to add the ValueSpecs field.
-func (opts RouterCreateOpts) ToRouterCreateMap() (map[string]interface{}, error) {
+func (opts RouterCreateOpts) ToRouterCreateMap() (map[string]any, error) {
 	return BuildRequest(opts, "router")
 }
 
@@ -82,13 +82,13 @@ type SubnetCreateOpts struct {
 
 // ToSubnetCreateMap casts a CreateOpts struct to a map.
 // It overrides subnets.ToSubnetCreateMap to add the ValueSpecs field.
-func (opts SubnetCreateOpts) ToSubnetCreateMap() (map[string]interface{}, error) {
+func (opts SubnetCreateOpts) ToSubnetCreateMap() (map[string]any, error) {
 	b, err := BuildRequest(opts, "subnet")
 	if err != nil {
 		return nil, err
 	}
 
-	if m := b["subnet"].(map[string]interface{}); m["gateway_ip"] == "" {
+	if m := b["subnet"].(map[string]any); m["gateway_ip"] == "" {
 		m["gateway_ip"] = nil
 	}
 

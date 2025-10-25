@@ -1,23 +1,26 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/groups"
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/users"
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/groups"
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/users"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccIdentityV3UserMembership_basic(t *testing.T) {
 	var group groups.Group
-	var groupName = fmt.Sprintf("ACCPTTEST-%s", acctest.RandString(5))
+
+	groupName := "ACCPTTEST-" + acctest.RandString(5)
 
 	var user users.User
-	var userName = fmt.Sprintf("ACCPTTEST-%s", acctest.RandString(5))
+
+	userName := "ACCPTTEST-" + acctest.RandString(5)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -25,14 +28,14 @@ func TestAccIdentityV3UserMembership_basic(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIdentityV3UserMembershipDestroy,
+		CheckDestroy:      testAccCheckIdentityV3UserMembershipDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIdentityV3UserMembershipBasic(groupName, userName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3UserExists("openstack_identity_user_v3.user_1", &user),
-					testAccCheckIdentityV3GroupExists("openstack_identity_group_v3.group_1", &group),
-					testAccCheckIdentityV3UserMembershipExists("openstack_identity_user_membership_v3.user_membership_1"),
+					testAccCheckIdentityV3UserExists(t.Context(), "openstack_identity_user_v3.user_1", &user),
+					testAccCheckIdentityV3GroupExists(t.Context(), "openstack_identity_group_v3.group_1", &group),
+					testAccCheckIdentityV3UserMembershipExists(t.Context(), "openstack_identity_user_membership_v3.user_membership_1"),
 					resource.TestCheckResourceAttrPtr(
 						"openstack_identity_user_membership_v3.user_membership_1", "user_id", &user.ID),
 					resource.TestCheckResourceAttrPtr(
@@ -43,33 +46,36 @@ func TestAccIdentityV3UserMembership_basic(t *testing.T) {
 	})
 }
 
-func testAccCheckIdentityV3UserMembershipDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	identityClient, err := config.IdentityV3Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack identity client: %s", err)
-	}
+func testAccCheckIdentityV3UserMembershipDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_identity_user_membership_v3" {
-			continue
-		}
-
-		uid, gid, err := parseUserMembershipID(rs.Primary.ID)
+		identityClient, err := config.IdentityV3Client(ctx, osRegionName)
 		if err != nil {
-			return err
+			return fmt.Errorf("Error creating OpenStack identity client: %w", err)
 		}
 
-		um, err := users.IsMemberOfGroup(identityClient, gid, uid).Extract()
-		if err == nil && um {
-			return fmt.Errorf("User membership still exists")
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_identity_user_membership_v3" {
+				continue
+			}
+
+			uid, gid, err := parsePairedIDs(rs.Primary.ID, "openstack_identity_user_membership_v3")
+			if err != nil {
+				return err
+			}
+
+			um, err := users.IsMemberOfGroup(ctx, identityClient, gid, uid).Extract()
+			if err == nil && um {
+				return errors.New("User membership still exists")
+			}
 		}
+
+		return nil
 	}
-
-	return nil
 }
 
-func testAccCheckIdentityV3UserMembershipExists(n string) resource.TestCheckFunc {
+func testAccCheckIdentityV3UserMembershipExists(ctx context.Context, n string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -77,23 +83,24 @@ func testAccCheckIdentityV3UserMembershipExists(n string) resource.TestCheckFunc
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		identityClient, err := config.IdentityV3Client(osRegionName)
+
+		identityClient, err := config.IdentityV3Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack identity client: %s", err)
+			return fmt.Errorf("Error creating OpenStack identity client: %w", err)
 		}
 
-		uid, gid, err := parseUserMembershipID(rs.Primary.ID)
+		uid, gid, err := parsePairedIDs(rs.Primary.ID, "openstack_identity_user_membership_v3")
 		if err != nil {
 			return err
 		}
 
-		um, err := users.IsMemberOfGroup(identityClient, gid, uid).Extract()
+		um, err := users.IsMemberOfGroup(ctx, identityClient, gid, uid).Extract()
 		if err != nil || !um {
-			return fmt.Errorf("User membership not found")
+			return errors.New("User membership not found")
 		}
 
 		return nil
@@ -111,8 +118,8 @@ func testAccIdentityV3UserMembershipBasic(groupName, userName string) string {
 	}
 
 	resource "openstack_identity_user_membership_v3" "user_membership_1" {
-	user_id = "${openstack_identity_user_v3.user_1.id}"
-	group_id = "${openstack_identity_group_v3.group_1.id}"
+	user_id = openstack_identity_user_v3.user_1.id
+	group_id = openstack_identity_group_v3.group_1.id
 	}
     `, groupName, userName)
 }

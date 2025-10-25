@@ -5,10 +5,9 @@ import (
 	"log"
 	"strings"
 
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/layer3/routers"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/routers"
 )
 
 func dataSourceNetworkingRouterV2() *schema.Resource {
@@ -78,6 +77,26 @@ func dataSourceNetworkingRouterV2() *schema.Resource {
 					},
 				},
 			},
+			"routes": {
+				Type:     schema.TypeList,
+				Computed: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"destination_cidr": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"next_hop": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+					},
+				},
+			},
+			"external_qos_policy_id": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
 			"tags": {
 				Type:     schema.TypeSet,
 				Optional: true,
@@ -92,9 +111,10 @@ func dataSourceNetworkingRouterV2() *schema.Resource {
 	}
 }
 
-func dataSourceNetworkingRouterV2Read(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func dataSourceNetworkingRouterV2Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
@@ -113,12 +133,12 @@ func dataSourceNetworkingRouterV2Read(ctx context.Context, d *schema.ResourceDat
 		listOpts.Description = v.(string)
 	}
 
-	if v, ok := d.GetOkExists("admin_state_up"); ok {
+	if v, ok := getOkExists(d, "admin_state_up"); ok {
 		asu := v.(bool)
 		listOpts.AdminStateUp = &asu
 	}
 
-	if v, ok := d.GetOkExists("distributed"); ok {
+	if v, ok := getOkExists(d, "distributed"); ok {
 		dist := v.(bool)
 		listOpts.Distributed = &dist
 	}
@@ -136,7 +156,7 @@ func dataSourceNetworkingRouterV2Read(ctx context.Context, d *schema.ResourceDat
 		listOpts.Tags = strings.Join(tags, ",")
 	}
 
-	pages, err := routers.List(networkingClient, listOpts).AllPages()
+	pages, err := routers.List(networkingClient, listOpts).AllPages(ctx)
 	if err != nil {
 		return diag.Errorf("Unable to list Routers: %s", err)
 	}
@@ -167,7 +187,9 @@ func dataSourceNetworkingRouterV2Read(ctx context.Context, d *schema.ResourceDat
 	d.Set("tenant_id", router.TenantID)
 	d.Set("external_network_id", router.GatewayInfo.NetworkID)
 	d.Set("enable_snat", router.GatewayInfo.EnableSNAT)
+	d.Set("external_qos_policy_id", router.GatewayInfo.QoSPolicyID)
 	d.Set("all_tags", router.Tags)
+	d.Set("routes", expandNetworkingRouterRoutesV2(router.Routes))
 	d.Set("region", GetRegion(d, config))
 
 	if err := d.Set("availability_zone_hints", router.AvailabilityZoneHints); err != nil {
@@ -181,8 +203,10 @@ func dataSourceNetworkingRouterV2Read(ctx context.Context, d *schema.ResourceDat
 			"ip_address": v.IPAddress,
 		})
 	}
+
 	if err = d.Set("external_fixed_ip", externalFixedIPs); err != nil {
 		log.Printf("[DEBUG] Unable to set external_fixed_ip: %s", err)
 	}
+
 	return nil
 }

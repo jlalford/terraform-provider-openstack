@@ -1,13 +1,14 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/volumeattach"
+	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/volumeattach"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccComputeV2VolumeAttach_basic(t *testing.T) {
@@ -19,12 +20,12 @@ func TestAccComputeV2VolumeAttach_basic(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckComputeV2VolumeAttachDestroy,
+		CheckDestroy:      testAccCheckComputeV2VolumeAttachDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccComputeV2VolumeAttachBasic(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckComputeV2VolumeAttachExists("openstack_compute_volume_attach_v2.va_1", &va),
+					testAccCheckComputeV2VolumeAttachExists(t.Context(), "openstack_compute_volume_attach_v2.va_1", &va),
 				),
 			},
 		},
@@ -40,12 +41,12 @@ func TestAccComputeV2VolumeAttach_device(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckComputeV2VolumeAttachDestroy,
+		CheckDestroy:      testAccCheckComputeV2VolumeAttachDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccComputeV2VolumeAttachDevice(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckComputeV2VolumeAttachExists("openstack_compute_volume_attach_v2.va_1", &va),
+					testAccCheckComputeV2VolumeAttachExists(t.Context(), "openstack_compute_volume_attach_v2.va_1", &va),
 					testAccCheckComputeV2VolumeAttachDevice(&va, "/dev/vdc"),
 				),
 			},
@@ -62,45 +63,48 @@ func TestAccComputeV2VolumeAttach_ignore_volume_confirmation(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckComputeV2VolumeAttachDestroy,
+		CheckDestroy:      testAccCheckComputeV2VolumeAttachDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccComputeV2VolumeAttachIgnoreVolumeConfirmation(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckComputeV2VolumeAttachExists("openstack_compute_volume_attach_v2.va_1", &va),
+					testAccCheckComputeV2VolumeAttachExists(t.Context(), "openstack_compute_volume_attach_v2.va_1", &va),
 				),
 			},
 		},
 	})
 }
 
-func testAccCheckComputeV2VolumeAttachDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	computeClient, err := config.ComputeV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack compute client: %s", err)
-	}
+func testAccCheckComputeV2VolumeAttachDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_compute_volume_attach_v2" {
-			continue
-		}
-
-		instanceID, volumeID, err := computeVolumeAttachV2ParseID(rs.Primary.ID)
+		computeClient, err := config.ComputeV2Client(ctx, osRegionName)
 		if err != nil {
-			return err
+			return fmt.Errorf("Error creating OpenStack compute client: %w", err)
 		}
 
-		_, err = volumeattach.Get(computeClient, instanceID, volumeID).Extract()
-		if err == nil {
-			return fmt.Errorf("Volume attachment still exists")
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_compute_volume_attach_v2" {
+				continue
+			}
+
+			instanceID, volumeID, err := parsePairedIDs(rs.Primary.ID, "openstack_compute_volume_attach_v2")
+			if err != nil {
+				return err
+			}
+
+			_, err = volumeattach.Get(ctx, computeClient, instanceID, volumeID).Extract()
+			if err == nil {
+				return errors.New("Volume attachment still exists")
+			}
 		}
+
+		return nil
 	}
-
-	return nil
 }
 
-func testAccCheckComputeV2VolumeAttachExists(n string, va *volumeattach.VolumeAttachment) resource.TestCheckFunc {
+func testAccCheckComputeV2VolumeAttachExists(ctx context.Context, n string, va *volumeattach.VolumeAttachment) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -108,27 +112,28 @@ func testAccCheckComputeV2VolumeAttachExists(n string, va *volumeattach.VolumeAt
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		computeClient, err := config.ComputeV2Client(osRegionName)
+
+		computeClient, err := config.ComputeV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack compute client: %s", err)
+			return fmt.Errorf("Error creating OpenStack compute client: %w", err)
 		}
 
-		instanceID, volumeID, err := computeVolumeAttachV2ParseID(rs.Primary.ID)
+		instanceID, volumeID, err := parsePairedIDs(rs.Primary.ID, "openstack_compute_volume_attach_v2")
 		if err != nil {
 			return err
 		}
 
-		found, err := volumeattach.Get(computeClient, instanceID, volumeID).Extract()
+		found, err := volumeattach.Get(ctx, computeClient, instanceID, volumeID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ServerID != instanceID || found.VolumeID != volumeID {
-			return fmt.Errorf("VolumeAttach not found")
+			return errors.New("VolumeAttach not found")
 		}
 
 		*va = *found
@@ -138,8 +143,9 @@ func testAccCheckComputeV2VolumeAttachExists(n string, va *volumeattach.VolumeAt
 }
 
 func testAccCheckComputeV2VolumeAttachDevice(
-	va *volumeattach.VolumeAttachment, device string) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
+	va *volumeattach.VolumeAttachment, device string,
+) resource.TestCheckFunc {
+	return func(_ *terraform.State) error {
 		if va.Device != device {
 			return fmt.Errorf("Requested device of volume attachment (%s) does not match: %s",
 				device, va.Device)
@@ -165,8 +171,8 @@ resource "openstack_compute_instance_v2" "instance_1" {
 }
 
 resource "openstack_compute_volume_attach_v2" "va_1" {
-  instance_id = "${openstack_compute_instance_v2.instance_1.id}"
-  volume_id = "${openstack_blockstorage_volume_v3.volume_1.id}"
+  instance_id = openstack_compute_instance_v2.instance_1.id
+  volume_id = openstack_blockstorage_volume_v3.volume_1.id
 }
 `, osNetworkID)
 }
@@ -187,8 +193,8 @@ resource "openstack_compute_instance_v2" "instance_1" {
 }
 
 resource "openstack_compute_volume_attach_v2" "va_1" {
-  instance_id = "${openstack_compute_instance_v2.instance_1.id}"
-  volume_id = "${openstack_blockstorage_volume_v3.volume_1.id}"
+  instance_id = openstack_compute_instance_v2.instance_1.id
+  volume_id = openstack_blockstorage_volume_v3.volume_1.id
   device = "/dev/vdc"
 }
 `, osNetworkID)
@@ -210,8 +216,9 @@ resource "openstack_compute_instance_v2" "instance_1" {
 }
 
 resource "openstack_compute_volume_attach_v2" "va_1" {
-  instance_id = "${openstack_compute_instance_v2.instance_1.id}"
-  volume_id = "${openstack_blockstorage_volume_v3.volume_1.id}"
+  instance_id = openstack_compute_instance_v2.instance_1.id
+  volume_id = openstack_blockstorage_volume_v3.volume_1.id
+  tag = "test"
   vendor_options {
     ignore_volume_confirmation = true
   }

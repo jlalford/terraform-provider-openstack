@@ -1,18 +1,20 @@
 package openstack
 
 import (
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"context"
+	"net/http"
 
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/trunks"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/trunks"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
-func networkingTrunkV2StateRefreshFunc(client *gophercloud.ServiceClient, trunkID string) resource.StateRefreshFunc {
-	return func() (interface{}, string, error) {
-		trunk, err := trunks.Get(client, trunkID).Extract()
+func networkingTrunkV2StateRefreshFunc(ctx context.Context, client *gophercloud.ServiceClient, trunkID string) retry.StateRefreshFunc {
+	return func() (any, string, error) {
+		trunk, err := trunks.Get(ctx, client, trunkID).Extract()
 		if err != nil {
-			if _, ok := err.(gophercloud.ErrDefault404); ok {
+			if gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
 				return trunk, "DELETED", nil
 			}
 
@@ -23,11 +25,11 @@ func networkingTrunkV2StateRefreshFunc(client *gophercloud.ServiceClient, trunkI
 	}
 }
 
-func flattenNetworkingTrunkV2Subports(subports []trunks.Subport) []map[string]interface{} {
-	trunkSubports := make([]map[string]interface{}, len(subports))
+func flattenNetworkingTrunkV2Subports(subports []trunks.Subport) []map[string]any {
+	trunkSubports := make([]map[string]any, len(subports))
 
 	for i, subport := range subports {
-		trunkSubports[i] = map[string]interface{}{
+		trunkSubports[i] = map[string]any{
 			"port_id":           subport.PortID,
 			"segmentation_type": subport.SegmentationType,
 			"segmentation_id":   subport.SegmentationID,
@@ -41,8 +43,9 @@ func expandNetworkingTrunkV2Subports(subports *schema.Set) []trunks.Subport {
 	rawSubports := subports.List()
 
 	trunkSubports := make([]trunks.Subport, len(rawSubports))
+
 	for i, raw := range rawSubports {
-		rawMap := raw.(map[string]interface{})
+		rawMap := raw.(map[string]any)
 
 		trunkSubports[i] = trunks.Subport{
 			PortID:           rawMap["port_id"].(string),
@@ -58,8 +61,9 @@ func expandNetworkingTrunkV2SubportsRemove(subports *schema.Set) []trunks.Remove
 	rawSubports := subports.List()
 
 	subportsToRemove := make([]trunks.RemoveSubport, len(rawSubports))
+
 	for i, raw := range rawSubports {
-		rawMap := raw.(map[string]interface{})
+		rawMap := raw.(map[string]any)
 
 		subportsToRemove[i] = trunks.RemoveSubport{
 			PortID: rawMap["port_id"].(string),

@@ -3,7 +3,7 @@ package openstack
 import (
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestAccKeyManagerSecretV1DataSource_basic(t *testing.T) {
@@ -13,7 +13,7 @@ func TestAccKeyManagerSecretV1DataSource_basic(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckSecretV1Destroy,
+		CheckDestroy:      testAccCheckSecretV1Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccKeyManagerSecretV1DataSourceBasic,
@@ -45,7 +45,7 @@ func TestAccKeyManagerSecretV1DataSource_acls(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckSecretV1Destroy,
+		CheckDestroy:      testAccCheckSecretV1Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccKeyManagerSecretV1DataSourceAcls,
@@ -100,14 +100,14 @@ resource "openstack_keymanager_secret_v1" "secret_2" {
 }
 
 data "openstack_keymanager_secret_v1" "secret_1" {
-  bit_length  = "${openstack_keymanager_secret_v1.secret_1.bit_length}"
+  bit_length  = openstack_keymanager_secret_v1.secret_1.bit_length
   secret_type = "passphrase"
 }
 
 data "openstack_keymanager_secret_v1" "secret_2" {
   mode              = "cbc"
   secret_type       = "passphrase"
-  expiration_filter = "${openstack_keymanager_secret_v1.secret_2.expiration}"
+  expiration_filter = openstack_keymanager_secret_v1.secret_2.expiration
 }
 `
 
@@ -150,13 +150,13 @@ resource "openstack_keymanager_secret_v1" "secret_2" {
 }
 
 data "openstack_keymanager_secret_v1" "secret_1" {
-  bit_length  = "${openstack_keymanager_secret_v1.secret_1.bit_length}"
+  bit_length  = openstack_keymanager_secret_v1.secret_1.bit_length
   secret_type = "passphrase"
 }
 
 data "openstack_keymanager_secret_v1" "secret_2" {
   mode              = "cbc"
   secret_type       = "passphrase"
-  expiration_filter = "${openstack_keymanager_secret_v1.secret_2.expiration}"
+  expiration_filter = openstack_keymanager_secret_v1.secret_2.expiration
 }
 `

@@ -4,10 +4,9 @@ import (
 	"context"
 	"log"
 
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/users"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/users"
 )
 
 func resourceIdentityUserV3() *schema.Resource {
@@ -107,9 +106,10 @@ func resourceIdentityUserV3() *schema.Resource {
 	}
 }
 
-func resourceIdentityUserV3Create(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceIdentityUserV3Create(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	identityClient, err := config.IdentityV3Client(GetRegion(d, config))
+
+	identityClient, err := config.IdentityV3Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack identity client: %s", err)
 	}
@@ -120,12 +120,13 @@ func resourceIdentityUserV3Create(ctx context.Context, d *schema.ResourceData, m
 		Description:      d.Get("description").(string),
 		DomainID:         d.Get("domain_id").(string),
 		Enabled:          &enabled,
-		Extra:            d.Get("extra").(map[string]interface{}),
+		Extra:            d.Get("extra").(map[string]any),
 		Name:             d.Get("name").(string),
 	}
 
 	// Build the user options
-	options := map[users.Option]interface{}{}
+	options := map[users.Option]any{}
+
 	for _, option := range getUserOptions() {
 		if v, ok := d.GetOk(string(option)); ok {
 			options[option] = v.(bool)
@@ -133,7 +134,7 @@ func resourceIdentityUserV3Create(ctx context.Context, d *schema.ResourceData, m
 	}
 
 	// Build the MFA rules
-	mfaRules := expandIdentityUserV3MFARules(d.Get("multi_factor_auth_rule").([]interface{}))
+	mfaRules := expandIdentityUserV3MFARules(d.Get("multi_factor_auth_rule").([]any))
 	if len(mfaRules) > 0 {
 		options[users.MultiFactorAuthRules] = mfaRules
 	}
@@ -145,7 +146,7 @@ func resourceIdentityUserV3Create(ctx context.Context, d *schema.ResourceData, m
 	// Add password here so it wouldn't go in the above log entry
 	createOpts.Password = d.Get("password").(string)
 
-	user, err := users.Create(identityClient, createOpts).Extract()
+	user, err := users.Create(ctx, identityClient, createOpts).Extract()
 	if err != nil {
 		return diag.Errorf("Error creating openstack_identity_user_v3: %s", err)
 	}
@@ -155,14 +156,15 @@ func resourceIdentityUserV3Create(ctx context.Context, d *schema.ResourceData, m
 	return resourceIdentityUserV3Read(ctx, d, meta)
 }
 
-func resourceIdentityUserV3Read(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceIdentityUserV3Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	identityClient, err := config.IdentityV3Client(GetRegion(d, config))
+
+	identityClient, err := config.IdentityV3Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack identity client: %s", err)
 	}
 
-	user, err := users.Get(identityClient, d.Id()).Extract()
+	user, err := users.Get(ctx, identityClient, d.Id()).Extract()
 	if err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "Error retrieving openstack_identity_user_v3"))
 	}
@@ -185,7 +187,7 @@ func resourceIdentityUserV3Read(ctx context.Context, d *schema.ResourceData, met
 		}
 	}
 
-	if v, ok := options["multi_factor_auth_rules"].([]interface{}); ok {
+	if v, ok := options["multi_factor_auth_rules"].([]any); ok {
 		mfaRules := flattenIdentityUserV3MFARules(v)
 		d.Set("multi_factor_auth_rule", mfaRules)
 	}
@@ -193,14 +195,16 @@ func resourceIdentityUserV3Read(ctx context.Context, d *schema.ResourceData, met
 	return nil
 }
 
-func resourceIdentityUserV3Update(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceIdentityUserV3Update(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	identityClient, err := config.IdentityV3Client(GetRegion(d, config))
+
+	identityClient, err := config.IdentityV3Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack identity client: %s", err)
 	}
 
 	var hasChange bool
+
 	var updateOpts users.UpdateOpts
 
 	if d.HasChange("default_project_id") {
@@ -227,7 +231,7 @@ func resourceIdentityUserV3Update(ctx context.Context, d *schema.ResourceData, m
 
 	if d.HasChange("extra") {
 		hasChange = true
-		updateOpts.Extra = d.Get("extra").(map[string]interface{})
+		updateOpts.Extra = d.Get("extra").(map[string]any)
 	}
 
 	if d.HasChange("name") {
@@ -236,7 +240,8 @@ func resourceIdentityUserV3Update(ctx context.Context, d *schema.ResourceData, m
 	}
 
 	// Determine if the options have changed
-	options := map[users.Option]interface{}{}
+	options := map[users.Option]any{}
+
 	for _, option := range getUserOptions() {
 		if d.HasChange(string(option)) {
 			hasChange = true
@@ -246,7 +251,7 @@ func resourceIdentityUserV3Update(ctx context.Context, d *schema.ResourceData, m
 
 	// Build the MFA rules
 	if d.HasChange("multi_factor_auth_rule") {
-		mfaRules := expandIdentityUserV3MFARules(d.Get("multi_factor_auth_rule").([]interface{}))
+		mfaRules := expandIdentityUserV3MFARules(d.Get("multi_factor_auth_rule").([]any))
 		if len(mfaRules) > 0 {
 			options[users.MultiFactorAuthRules] = mfaRules
 		}
@@ -264,7 +269,7 @@ func resourceIdentityUserV3Update(ctx context.Context, d *schema.ResourceData, m
 	}
 
 	if hasChange {
-		_, err := users.Update(identityClient, d.Id(), updateOpts).Extract()
+		_, err := users.Update(ctx, identityClient, d.Id(), updateOpts).Extract()
 		if err != nil {
 			return diag.Errorf("Error updating openstack_identity_user_v3 %s: %s", d.Id(), err)
 		}
@@ -273,14 +278,15 @@ func resourceIdentityUserV3Update(ctx context.Context, d *schema.ResourceData, m
 	return resourceIdentityUserV3Read(ctx, d, meta)
 }
 
-func resourceIdentityUserV3Delete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceIdentityUserV3Delete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	identityClient, err := config.IdentityV3Client(GetRegion(d, config))
+
+	identityClient, err := config.IdentityV3Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack identity client: %s", err)
 	}
 
-	err = users.Delete(identityClient, d.Id()).ExtractErr()
+	err = users.Delete(ctx, identityClient, d.Id()).ExtractErr()
 	if err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "Error deleting openstack_identity_user_v3"))
 	}

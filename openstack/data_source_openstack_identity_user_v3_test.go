@@ -1,16 +1,17 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccOpenStackIdentityV3UserDataSource_basic(t *testing.T) {
-	userName := fmt.Sprintf("tf_test_%s", acctest.RandString(5))
+	userName := "tf_test_" + acctest.RandString(5)
 	userPassword := acctest.RandString(20)
 
 	resource.Test(t, resource.TestCase{
@@ -49,7 +50,7 @@ func testAccCheckIdentityUserV3DataSourceID(n string) resource.TestCheckFunc {
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("User data source ID not set")
+			return errors.New("User data source ID not set")
 		}
 
 		return nil
@@ -64,7 +65,7 @@ func testAccCheckIdentityUserV3DataSourceDefaultProjectID(n1, n2 string) resourc
 		}
 
 		if ds1.Primary.ID == "" {
-			return fmt.Errorf("User data source ID not set")
+			return errors.New("User data source ID not set")
 		}
 
 		rs2, ok := s.RootModule().Resources[n2]
@@ -73,11 +74,11 @@ func testAccCheckIdentityUserV3DataSourceDefaultProjectID(n1, n2 string) resourc
 		}
 
 		if rs2.Primary.ID == "" {
-			return fmt.Errorf("Project resource ID not set")
+			return errors.New("Project resource ID not set")
 		}
 
 		if rs2.Primary.ID != ds1.Primary.Attributes["default_project_id"] {
-			return fmt.Errorf("Project id and user default_project_id don't match")
+			return errors.New("Project id and user default_project_id don't match")
 		}
 
 		return nil
@@ -91,9 +92,9 @@ func testAccOpenStackIdentityUserV3DataSourceUser(name, password string) string 
 	resource "openstack_identity_user_v3" "user_1" {
 	  name = "%s"
 	  password = "%s"
-	  default_project_id = "${openstack_identity_project_v3.project_1.id}"
+	  default_project_id = openstack_identity_project_v3.project_1.id
 	}
-`, testAccOpenStackIdentityProjectV3DataSourceProject(fmt.Sprintf("%s_project", name), acctest.RandString(20), "tag1", "tag2"), name, password)
+`, testAccOpenStackIdentityProjectV3DataSourceProject(name+"_project", acctest.RandString(20), "tag1", "tag2"), name, password)
 }
 
 func testAccOpenStackIdentityUserV3DataSourceBasic(name, password string) string {
@@ -101,7 +102,7 @@ func testAccOpenStackIdentityUserV3DataSourceBasic(name, password string) string
 	%s
 
 	data "openstack_identity_user_v3" "user_1" {
-      name = "${openstack_identity_user_v3.user_1.name}"
+      name = openstack_identity_user_v3.user_1.name
 	}
 `, testAccOpenStackIdentityUserV3DataSourceUser(name, password))
 }

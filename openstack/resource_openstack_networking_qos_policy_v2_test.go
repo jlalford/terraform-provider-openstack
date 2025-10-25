@@ -1,13 +1,14 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/qos/policies"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/qos/policies"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccNetworkingV2QoSPolicyBasic(t *testing.T) {
@@ -17,15 +18,14 @@ func TestAccNetworkingV2QoSPolicyBasic(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckAdminOnly(t)
-			testAccSkipReleasesBelow(t, "stable/yoga")
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2QoSPolicyDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2QoSPolicyDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2QoSPolicyBasic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2QoSPolicyExists(
+					testAccCheckNetworkingV2QoSPolicyExists(t.Context(),
 						"openstack_networking_qos_policy_v2.qos_policy_1", &policy),
 					resource.TestCheckResourceAttr(
 						"openstack_networking_qos_policy_v2.qos_policy_1", "name", "qos_policy_1"),
@@ -46,7 +46,7 @@ func TestAccNetworkingV2QoSPolicyBasic(t *testing.T) {
 	})
 }
 
-func testAccCheckNetworkingV2QoSPolicyExists(n string, policy *policies.Policy) resource.TestCheckFunc {
+func testAccCheckNetworkingV2QoSPolicyExists(ctx context.Context, n string, policy *policies.Policy) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -54,22 +54,23 @@ func testAccCheckNetworkingV2QoSPolicyExists(n string, policy *policies.Policy) 
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		networkingClient, err := config.NetworkingV2Client(osRegionName)
+
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack networking client: %s", err)
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
 		}
 
-		found, err := policies.Get(networkingClient, rs.Primary.ID).Extract()
+		found, err := policies.Get(ctx, networkingClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("QoS policy not found")
+			return errors.New("QoS policy not found")
 		}
 
 		*policy = *found
@@ -78,25 +79,28 @@ func testAccCheckNetworkingV2QoSPolicyExists(n string, policy *policies.Policy) 
 	}
 }
 
-func testAccCheckNetworkingV2QoSPolicyDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	networkingClient, err := config.NetworkingV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack networking client: %s", err)
-	}
+func testAccCheckNetworkingV2QoSPolicyDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_networking_qos_policy_v2" {
-			continue
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
 		}
 
-		_, err := policies.Get(networkingClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("QoS policy still exists")
-		}
-	}
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_networking_qos_policy_v2" {
+				continue
+			}
 
-	return nil
+			_, err := policies.Get(ctx, networkingClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return errors.New("QoS policy still exists")
+			}
+		}
+
+		return nil
+	}
 }
 
 const testAccNetworkingV2QoSPolicyBasic = `

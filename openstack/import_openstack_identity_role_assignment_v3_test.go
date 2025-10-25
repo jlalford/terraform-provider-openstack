@@ -3,7 +3,7 @@ package openstack
 import (
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestAccIdentityV3RoleAssignment_importBasic(t *testing.T) {
@@ -15,7 +15,7 @@ func TestAccIdentityV3RoleAssignment_importBasic(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIdentityV3RoleAssignmentDestroy,
+		CheckDestroy:      testAccCheckIdentityV3RoleAssignmentDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIdentityV3RoleAssignmentBasic,

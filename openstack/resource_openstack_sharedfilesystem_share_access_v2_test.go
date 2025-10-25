@@ -1,18 +1,20 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/sharedfilesystems/v2/shares"
+	"github.com/gophercloud/gophercloud/v2/openstack/sharedfilesystems/v2/shares"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccSFSV2ShareAccess_basic(t *testing.T) {
 	var shareAccess1 shares.AccessRight
+
 	var shareAccess2 shares.AccessRight
 
 	resource.Test(t, resource.TestCase{
@@ -22,18 +24,18 @@ func TestAccSFSV2ShareAccess_basic(t *testing.T) {
 			testAccPreCheckSFS(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckSFSV2ShareAccessDestroy,
+		CheckDestroy:      testAccCheckSFSV2ShareAccessDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccSFSV2ShareAccessConfigBasic(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSFSV2ShareAccessExists("openstack_sharedfilesystem_share_access_v2.share_access_1", &shareAccess1),
+					testAccCheckSFSV2ShareAccessExists(t.Context(), "openstack_sharedfilesystem_share_access_v2.share_access_1", &shareAccess1),
 					resource.TestCheckResourceAttr("openstack_sharedfilesystem_share_access_v2.share_access_1", "access_type", "ip"),
 					resource.TestCheckResourceAttr("openstack_sharedfilesystem_share_access_v2.share_access_1", "access_to", "192.168.199.10"),
 					resource.TestCheckResourceAttr("openstack_sharedfilesystem_share_access_v2.share_access_1", "access_level", "rw"),
 					resource.TestMatchResourceAttr("openstack_sharedfilesystem_share_access_v2.share_access_1", "share_id",
 						regexp.MustCompile("^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-4[a-fA-F0-9]{3}-[8|9|aA|bB][a-fA-F0-9]{3}-[a-fA-F0-9]{12}$")),
-					testAccCheckSFSV2ShareAccessExists("openstack_sharedfilesystem_share_access_v2.share_access_2", &shareAccess2),
+					testAccCheckSFSV2ShareAccessExists(t.Context(), "openstack_sharedfilesystem_share_access_v2.share_access_2", &shareAccess2),
 					resource.TestCheckResourceAttr("openstack_sharedfilesystem_share_access_v2.share_access_2", "access_type", "ip"),
 					resource.TestCheckResourceAttr("openstack_sharedfilesystem_share_access_v2.share_access_2", "access_to", "192.168.199.11"),
 					resource.TestCheckResourceAttr("openstack_sharedfilesystem_share_access_v2.share_access_2", "access_level", "rw"),
@@ -45,13 +47,13 @@ func TestAccSFSV2ShareAccess_basic(t *testing.T) {
 			{
 				Config: testAccSFSV2ShareAccessConfigUpdate(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSFSV2ShareAccessExists("openstack_sharedfilesystem_share_access_v2.share_access_1", &shareAccess1),
+					testAccCheckSFSV2ShareAccessExists(t.Context(), "openstack_sharedfilesystem_share_access_v2.share_access_1", &shareAccess1),
 					resource.TestCheckResourceAttr("openstack_sharedfilesystem_share_access_v2.share_access_1", "access_type", "ip"),
 					resource.TestCheckResourceAttr("openstack_sharedfilesystem_share_access_v2.share_access_1", "access_to", "192.168.199.10"),
 					resource.TestCheckResourceAttr("openstack_sharedfilesystem_share_access_v2.share_access_1", "access_level", "ro"),
 					resource.TestMatchResourceAttr("openstack_sharedfilesystem_share_access_v2.share_access_1", "share_id",
 						regexp.MustCompile("^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-4[a-fA-F0-9]{3}-[8|9|aA|bB][a-fA-F0-9]{3}-[a-fA-F0-9]{12}$")),
-					testAccCheckSFSV2ShareAccessExists("openstack_sharedfilesystem_share_access_v2.share_access_2", &shareAccess2),
+					testAccCheckSFSV2ShareAccessExists(t.Context(), "openstack_sharedfilesystem_share_access_v2.share_access_2", &shareAccess2),
 					resource.TestCheckResourceAttr("openstack_sharedfilesystem_share_access_v2.share_access_2", "access_type", "ip"),
 					resource.TestCheckResourceAttr("openstack_sharedfilesystem_share_access_v2.share_access_2", "access_to", "192.168.199.11"),
 					resource.TestCheckResourceAttr("openstack_sharedfilesystem_share_access_v2.share_access_2", "access_level", "ro"),
@@ -64,40 +66,45 @@ func TestAccSFSV2ShareAccess_basic(t *testing.T) {
 	})
 }
 
-func testAccCheckSFSV2ShareAccessDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	sfsClient, err := config.SharedfilesystemV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack sharedfilesystem client: %s", err)
-	}
+func testAccCheckSFSV2ShareAccessDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_sharedfilesystem_share_access_v2" {
-			continue
+		sfsClient, err := config.SharedfilesystemV2Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack sharedfilesystem client: %w", err)
 		}
 
-		var shareID string
-		for k, v := range rs.Primary.Attributes {
-			if k == "share_id" {
-				shareID = v
-				break
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_sharedfilesystem_share_access_v2" {
+				continue
 			}
-		}
 
-		access, err := shares.ListAccessRights(sfsClient, shareID).Extract()
-		if err == nil {
-			for _, v := range access {
-				if v.ID == rs.Primary.ID {
-					return fmt.Errorf("Manila share access still exists: %s", rs.Primary.ID)
+			var shareID string
+
+			for k, v := range rs.Primary.Attributes {
+				if k == "share_id" {
+					shareID = v
+
+					break
+				}
+			}
+
+			access, err := shares.ListAccessRights(ctx, sfsClient, shareID).Extract()
+			if err == nil {
+				for _, v := range access {
+					if v.ID == rs.Primary.ID {
+						return fmt.Errorf("Manila share access still exists: %s", rs.Primary.ID)
+					}
 				}
 			}
 		}
-	}
 
-	return nil
+		return nil
+	}
 }
 
-func testAccCheckSFSV2ShareAccessExists(n string, share *shares.AccessRight) resource.TestCheckFunc {
+func testAccCheckSFSV2ShareAccessExists(ctx context.Context, n string, share *shares.AccessRight) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -105,28 +112,31 @@ func testAccCheckSFSV2ShareAccessExists(n string, share *shares.AccessRight) res
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		sfsClient, err := config.SharedfilesystemV2Client(osRegionName)
+
+		sfsClient, err := config.SharedfilesystemV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack sharedfilesystem client: %s", err)
+			return fmt.Errorf("Error creating OpenStack sharedfilesystem client: %w", err)
 		}
 
 		var shareID string
+
 		for k, v := range rs.Primary.Attributes {
 			if k == "share_id" {
 				shareID = v
+
 				break
 			}
 		}
 
 		sfsClient.Microversion = sharedFilesystemV2MinMicroversion
 
-		access, err := shares.ListAccessRights(sfsClient, shareID).Extract()
+		access, err := shares.ListAccessRights(ctx, sfsClient, shareID).Extract()
 		if err != nil {
-			return fmt.Errorf("Unable to get %s share: %s", shareID, err)
+			return fmt.Errorf("Unable to get %s share: %w", shareID, err)
 		}
 
 		var found shares.AccessRight
@@ -134,12 +144,13 @@ func testAccCheckSFSV2ShareAccessExists(n string, share *shares.AccessRight) res
 		for _, v := range access {
 			if v.ID == rs.Primary.ID {
 				found = v
+
 				break
 			}
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("ShareAccess not found")
+			return errors.New("ShareAccess not found")
 		}
 
 		*share = found
@@ -149,11 +160,12 @@ func testAccCheckSFSV2ShareAccessExists(n string, share *shares.AccessRight) res
 }
 
 func testAccCheckSFSV2ShareAccessDiffers(shareAccess1, shareAccess2 *shares.AccessRight) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
+	return func(_ *terraform.State) error {
 		if shareAccess1.ID != shareAccess2.ID {
 			return nil
 		}
-		return fmt.Errorf("Share accesses should differ")
+
+		return errors.New("Share accesses should differ")
 	}
 }
 
@@ -172,14 +184,14 @@ func testAccSFSV2ShareAccessConfigBasic() string {
 %s
 
 resource "openstack_sharedfilesystem_share_access_v2" "share_access_1" {
-  share_id     = "${openstack_sharedfilesystem_share_v2.share_1.id}"
+  share_id     = openstack_sharedfilesystem_share_v2.share_1.id
   access_type  = "ip"
   access_to    = "192.168.199.10"
   access_level = "rw"
 }
 
 resource "openstack_sharedfilesystem_share_access_v2" "share_access_2" {
-  share_id     = "${openstack_sharedfilesystem_share_v2.share_1.id}"
+  share_id     = openstack_sharedfilesystem_share_v2.share_1.id
   access_type  = "ip"
   access_to    = "192.168.199.11"
   access_level = "rw"
@@ -192,14 +204,14 @@ func testAccSFSV2ShareAccessConfigUpdate() string {
 %s
 
 resource "openstack_sharedfilesystem_share_access_v2" "share_access_1" {
-  share_id     = "${openstack_sharedfilesystem_share_v2.share_1.id}"
+  share_id     = openstack_sharedfilesystem_share_v2.share_1.id
   access_type  = "ip"
   access_to    = "192.168.199.10"
   access_level = "ro"
 }
 
 resource "openstack_sharedfilesystem_share_access_v2" "share_access_2" {
-  share_id     = "${openstack_sharedfilesystem_share_v2.share_1.id}"
+  share_id     = openstack_sharedfilesystem_share_v2.share_1.id
   access_type  = "ip"
   access_to    = "192.168.199.11"
   access_level = "ro"

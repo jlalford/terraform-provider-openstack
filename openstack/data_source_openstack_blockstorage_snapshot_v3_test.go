@@ -1,17 +1,20 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"testing"
+	"time"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/blockstorage/v3/snapshots"
-	"github.com/gophercloud/gophercloud/openstack/blockstorage/v3/volumes"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/blockstorage/v3/snapshots"
+	"github.com/gophercloud/gophercloud/v2/openstack/blockstorage/v3/volumes"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccBlockStorageV3SnapshotDataSource_basic(t *testing.T) {
@@ -20,12 +23,15 @@ func TestAccBlockStorageV3SnapshotDataSource_basic(t *testing.T) {
 	snapshotName := acctest.RandomWithPrefix("tf-acc-snapshot")
 
 	var volumeID, snapshotID string
+
 	if os.Getenv("TF_ACC") != "" {
 		var err error
-		volumeID, snapshotID, err = testAccBlockStorageV3CreateVolumeAndSnapshot(volumeName, snapshotName)
+
+		volumeID, snapshotID, err = testAccBlockStorageV3CreateVolumeAndSnapshot(t.Context(), volumeName, snapshotName)
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		defer testAccBlockStorageV3DeleteVolumeAndSnapshot(t, volumeID, snapshotID)
 	}
 
@@ -48,13 +54,13 @@ func TestAccBlockStorageV3SnapshotDataSource_basic(t *testing.T) {
 	})
 }
 
-func testAccBlockStorageV3CreateVolumeAndSnapshot(volumeName, snapshotName string) (string, string, error) {
-	config, err := testAccAuthFromEnv()
+func testAccBlockStorageV3CreateVolumeAndSnapshot(ctx context.Context, volumeName, snapshotName string) (string, string, error) {
+	config, err := testAccAuthFromEnv(ctx)
 	if err != nil {
 		return "", "", err
 	}
 
-	bsClient, err := config.BlockStorageV3Client(osRegionName)
+	bsClient, err := config.BlockStorageV3Client(ctx, osRegionName)
 	if err != nil {
 		return "", "", err
 	}
@@ -64,12 +70,15 @@ func testAccBlockStorageV3CreateVolumeAndSnapshot(volumeName, snapshotName strin
 		Name: volumeName,
 	}
 
-	volume, err := volumes.Create(bsClient, volCreateOpts).Extract()
+	volume, err := volumes.Create(ctx, bsClient, volCreateOpts, nil).Extract()
 	if err != nil {
 		return "", "", err
 	}
 
-	err = volumes.WaitForStatus(bsClient, volume.ID, "available", 60)
+	ctx1, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	err = volumes.WaitForStatus(ctx1, bsClient, volume.ID, "available")
 	if err != nil {
 		return "", "", err
 	}
@@ -79,12 +88,15 @@ func testAccBlockStorageV3CreateVolumeAndSnapshot(volumeName, snapshotName strin
 		Name:     snapshotName,
 	}
 
-	snapshot, err := snapshots.Create(bsClient, snapCreateOpts).Extract()
+	snapshot, err := snapshots.Create(ctx, bsClient, snapCreateOpts).Extract()
 	if err != nil {
 		return volume.ID, "", err
 	}
 
-	err = snapshots.WaitForStatus(bsClient, snapshot.ID, "available", 60)
+	ctx2, cancel1 := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel1()
+
+	err = snapshots.WaitForStatus(ctx2, bsClient, snapshot.ID, "available")
 	if err != nil {
 		return volume.ID, "", err
 	}
@@ -93,36 +105,42 @@ func testAccBlockStorageV3CreateVolumeAndSnapshot(volumeName, snapshotName strin
 }
 
 func testAccBlockStorageV3DeleteVolumeAndSnapshot(t *testing.T, volumeID, snapshotID string) {
-	config, err := testAccAuthFromEnv()
+	config, err := testAccAuthFromEnv(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	bsClient, err := config.BlockStorageV3Client(osRegionName)
+	bsClient, err := config.BlockStorageV3Client(t.Context(), osRegionName)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = snapshots.Delete(bsClient, snapshotID).ExtractErr()
+	err = snapshots.Delete(t.Context(), bsClient, snapshotID).ExtractErr()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = snapshots.WaitForStatus(bsClient, snapshotID, "DELETED", 60)
+	ctx1, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+
+	err = snapshots.WaitForStatus(ctx1, bsClient, snapshotID, "DELETED")
 	if err != nil {
-		if _, ok := err.(gophercloud.ErrDefault404); !ok {
+		if !gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
 			t.Fatal(err)
 		}
 	}
 
-	err = volumes.Delete(bsClient, volumeID, nil).ExtractErr()
+	err = volumes.Delete(t.Context(), bsClient, volumeID, nil).ExtractErr()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = volumes.WaitForStatus(bsClient, volumeID, "DELETED", 60)
+	ctx2, cancel1 := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel1()
+
+	err = volumes.WaitForStatus(ctx2, bsClient, volumeID, "DELETED")
 	if err != nil {
-		if _, ok := err.(gophercloud.ErrDefault404); !ok {
+		if !gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
 			t.Fatal(err)
 		}
 	}
@@ -136,7 +154,7 @@ func testAccCheckBlockStorageV3SnapshotDataSourceID(n string) resource.TestCheck
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Snapshot data source ID not set")
+			return errors.New("Snapshot data source ID not set")
 		}
 
 		return nil

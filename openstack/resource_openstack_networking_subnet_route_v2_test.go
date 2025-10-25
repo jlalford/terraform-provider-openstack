@@ -1,15 +1,16 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/routers"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/layer3/routers"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/networks"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/subnets"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccNetworkingV2SubnetRoute_basic(t *testing.T) {
@@ -29,31 +30,31 @@ func TestAccNetworkingV2SubnetRoute_basic(t *testing.T) {
 			{
 				Config: testAccNetworkingV2SubnetRouteCreate,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2RouterExists("openstack_networking_router_v2.router_1", &router),
-					testAccCheckNetworkingV2NetworkExists("openstack_networking_network_v2.network_1", &network),
-					testAccCheckNetworkingV2SubnetExists("openstack_networking_subnet_v2.subnet_1", &subnet),
-					testAccCheckNetworkingV2RouterInterfaceExists("openstack_networking_router_interface_v2.int_1"),
-					testAccCheckNetworkingV2SubnetRouteExists("openstack_networking_subnet_route_v2.subnet_route_1"),
+					testAccCheckNetworkingV2RouterExists(t.Context(), "openstack_networking_router_v2.router_1", &router),
+					testAccCheckNetworkingV2NetworkExists(t.Context(), "openstack_networking_network_v2.network_1", &network),
+					testAccCheckNetworkingV2SubnetExists(t.Context(), "openstack_networking_subnet_v2.subnet_1", &subnet),
+					testAccCheckNetworkingV2RouterInterfaceExists(t.Context(), "openstack_networking_router_interface_v2.int_1"),
+					testAccCheckNetworkingV2SubnetRouteExists(t.Context(), "openstack_networking_subnet_route_v2.subnet_route_1"),
 				),
 			},
 			{
 				Config: testAccNetworkingV2SubnetRouteUpdate,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SubnetRouteExists("openstack_networking_subnet_route_v2.subnet_route_1"),
-					testAccCheckNetworkingV2SubnetRouteExists("openstack_networking_subnet_route_v2.subnet_route_2"),
+					testAccCheckNetworkingV2SubnetRouteExists(t.Context(), "openstack_networking_subnet_route_v2.subnet_route_1"),
+					testAccCheckNetworkingV2SubnetRouteExists(t.Context(), "openstack_networking_subnet_route_v2.subnet_route_2"),
 				),
 			},
 			{
 				Config: testAccNetworkingV2SubnetRouteDestroy,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SubnetRouteEmpty("openstack_networking_subnet_v2.subnet_1"),
+					testAccCheckNetworkingV2SubnetRouteEmpty(t.Context(), "openstack_networking_subnet_v2.subnet_1"),
 				),
 			},
 		},
 	})
 }
 
-func testAccCheckNetworkingV2SubnetRouteEmpty(n string) resource.TestCheckFunc {
+func testAccCheckNetworkingV2SubnetRouteEmpty(ctx context.Context, n string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -61,22 +62,23 @@ func testAccCheckNetworkingV2SubnetRouteEmpty(n string) resource.TestCheckFunc {
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		networkingClient, err := config.NetworkingV2Client(osRegionName)
+
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack networking client: %s", err)
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
 		}
 
-		subnet, err := subnets.Get(networkingClient, rs.Primary.ID).Extract()
+		subnet, err := subnets.Get(ctx, networkingClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if subnet.ID != rs.Primary.ID {
-			return fmt.Errorf("Subnet not found")
+			return errors.New("Subnet not found")
 		}
 
 		if len(subnet.HostRoutes) != 0 {
@@ -87,7 +89,7 @@ func testAccCheckNetworkingV2SubnetRouteEmpty(n string) resource.TestCheckFunc {
 	}
 }
 
-func testAccCheckNetworkingV2SubnetRouteExists(n string) resource.TestCheckFunc {
+func testAccCheckNetworkingV2SubnetRouteExists(ctx context.Context, n string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -95,30 +97,33 @@ func testAccCheckNetworkingV2SubnetRouteExists(n string) resource.TestCheckFunc 
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		networkingClient, err := config.NetworkingV2Client(osRegionName)
+
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack networking client: %s", err)
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
 		}
 
-		subnet, err := subnets.Get(networkingClient, rs.Primary.Attributes["subnet_id"]).Extract()
+		subnet, err := subnets.Get(ctx, networkingClient, rs.Primary.Attributes["subnet_id"]).Extract()
 		if err != nil {
 			return err
 		}
 
 		if subnet.ID != rs.Primary.Attributes["subnet_id"] {
-			return fmt.Errorf("Subnet for route not found")
+			return errors.New("Subnet for route not found")
 		}
 
-		var found = false
+		found := false
+
 		for _, r := range subnet.HostRoutes {
 			if r.DestinationCIDR == rs.Primary.Attributes["destination_cidr"] && r.NextHop == rs.Primary.Attributes["next_hop"] {
 				found = true
 			}
 		}
+
 		if !found {
 			return fmt.Errorf("Could not find route for destination CIDR: %s, next hop: %s", rs.Primary.Attributes["destination_cidr"], rs.Primary.Attributes["next_hop"])
 		}
@@ -127,37 +132,41 @@ func testAccCheckNetworkingV2SubnetRouteExists(n string) resource.TestCheckFunc 
 	}
 }
 
-func testAccCheckNetworkingV2SubnetRouteDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	networkingClient, err := config.NetworkingV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack networking client: %s", err)
-	}
+func testAccCheckNetworkingV2SubnetRouteDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_networking_subnet_route_v2" {
-			continue
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
 		}
 
-		var routeExists = false
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_networking_subnet_route_v2" {
+				continue
+			}
 
-		subnet, err := subnets.Get(networkingClient, rs.Primary.Attributes["subnet_id"]).Extract()
-		if err == nil {
-			var rts = subnet.HostRoutes
-			for _, r := range rts {
-				if r.DestinationCIDR == rs.Primary.Attributes["destination_cidr"] && r.NextHop == rs.Primary.Attributes["next_hop"] {
-					routeExists = true
-					break
+			routeExists := false
+
+			subnet, err := subnets.Get(ctx, networkingClient, rs.Primary.Attributes["subnet_id"]).Extract()
+			if err == nil {
+				rts := subnet.HostRoutes
+				for _, r := range rts {
+					if r.DestinationCIDR == rs.Primary.Attributes["destination_cidr"] && r.NextHop == rs.Primary.Attributes["next_hop"] {
+						routeExists = true
+
+						break
+					}
 				}
+			}
+
+			if routeExists {
+				return errors.New("Route still exists")
 			}
 		}
 
-		if routeExists {
-			return fmt.Errorf("Route still exists")
-		}
+		return nil
 	}
-
-	return nil
 }
 
 const testAccNetworkingV2SubnetRouteCreate = `
@@ -174,30 +183,30 @@ resource "openstack_networking_network_v2" "network_1" {
 resource "openstack_networking_subnet_v2" "subnet_1" {
   cidr = "192.168.199.0/24"
   ip_version = 4
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 }
 
 resource "openstack_networking_port_v2" "port_1" {
   name = "port_1"
   admin_state_up = "true"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 
   fixed_ip {
-    subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+    subnet_id = openstack_networking_subnet_v2.subnet_1.id
     ip_address = "192.168.199.1"
   }
 }
 
 resource "openstack_networking_router_interface_v2" "int_1" {
-  router_id = "${openstack_networking_router_v2.router_1.id}"
-  port_id = "${openstack_networking_port_v2.port_1.id}"
+  router_id = openstack_networking_router_v2.router_1.id
+  port_id = openstack_networking_port_v2.port_1.id
 }
 
 resource "openstack_networking_subnet_route_v2" "subnet_route_1" {
   destination_cidr = "10.0.1.0/24"
   next_hop = "192.168.199.254"
 
-  subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+  subnet_id = openstack_networking_subnet_v2.subnet_1.id
 }
 `
 
@@ -215,37 +224,37 @@ resource "openstack_networking_network_v2" "network_1" {
 resource "openstack_networking_subnet_v2" "subnet_1" {
   cidr = "192.168.199.0/24"
   ip_version = 4
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 }
 
 resource "openstack_networking_port_v2" "port_1" {
   name = "port_1"
   admin_state_up = "true"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 
   fixed_ip {
-    subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+    subnet_id = openstack_networking_subnet_v2.subnet_1.id
     ip_address = "192.168.199.1"
   }
 }
 
 resource "openstack_networking_router_interface_v2" "int_1" {
-  router_id = "${openstack_networking_router_v2.router_1.id}"
-  port_id = "${openstack_networking_port_v2.port_1.id}"
+  router_id = openstack_networking_router_v2.router_1.id
+  port_id = openstack_networking_port_v2.port_1.id
 }
 
 resource "openstack_networking_subnet_route_v2" "subnet_route_1" {
   destination_cidr = "10.0.1.0/24"
   next_hop = "192.168.199.254"
 
-  subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+  subnet_id = openstack_networking_subnet_v2.subnet_1.id
 }
 
 resource "openstack_networking_subnet_route_v2" "subnet_route_2" {
   destination_cidr = "10.0.2.0/24"
   next_hop = "192.168.199.254"
 
-  subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+  subnet_id = openstack_networking_subnet_v2.subnet_1.id
 }
 `
 
@@ -263,22 +272,22 @@ resource "openstack_networking_network_v2" "network_1" {
 resource "openstack_networking_subnet_v2" "subnet_1" {
   cidr = "192.168.199.0/24"
   ip_version = 4
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 }
 
 resource "openstack_networking_port_v2" "port_1" {
   name = "port_1"
   admin_state_up = "true"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 
   fixed_ip {
-    subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+    subnet_id = openstack_networking_subnet_v2.subnet_1.id
     ip_address = "192.168.199.1"
   }
 }
 
 resource "openstack_networking_router_interface_v2" "int_1" {
-  router_id = "${openstack_networking_router_v2.router_1.id}"
-  port_id = "${openstack_networking_port_v2.port_1.id}"
+  router_id = openstack_networking_router_v2.router_1.id
+  port_id = openstack_networking_port_v2.port_1.id
 }
 `

@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccNetworkingV2SubnetPoolDataSourceBasic(t *testing.T) {
@@ -84,7 +85,7 @@ func testAccCheckNetworkingSubnetPoolV2DataSourceID(n string) resource.TestCheck
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Subnetpool data source ID not set")
+			return errors.New("Subnetpool data source ID not set")
 		}
 
 		return nil
@@ -116,7 +117,7 @@ func testAccOpenStackNetworkingSubnetPoolV2DataSourceBasic() string {
 %s
 
 data "openstack_networking_subnetpool_v2" "subnetpool_1" {
-  name = "${openstack_networking_subnetpool_v2.subnetpool_1.name}"
+  name = openstack_networking_subnetpool_v2.subnetpool_1.name
 }
 `, testAccOpenStackNetworkingSubnetPoolV2DataSourceSubnetPool)
 }
@@ -151,7 +152,7 @@ func testAccOpenStackNetworkingSubnetPoolV2DataSourceDescription() string {
 %s
 
 data "openstack_networking_subnetpool_v2" "subnetpool_1" {
-  description = "${openstack_networking_subnetpool_v2.subnetpool_1.description}"
+  description = openstack_networking_subnetpool_v2.subnetpool_1.description
   tags = [
     "bar",
   ]

@@ -5,11 +5,10 @@ import (
 	"log"
 	"time"
 
+	"github.com/gophercloud/gophercloud/v2/openstack/keymanager/v1/acls"
+	"github.com/gophercloud/gophercloud/v2/openstack/keymanager/v1/containers"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/gophercloud/gophercloud/openstack/keymanager/v1/acls"
-	"github.com/gophercloud/gophercloud/openstack/keymanager/v1/containers"
 )
 
 func dataSourceKeyManagerContainerV1() *schema.Resource {
@@ -104,14 +103,16 @@ func dataSourceKeyManagerContainerV1() *schema.Resource {
 	for _, aclOp := range getSupportedACLOperations() {
 		elem.Schema[aclOp] = getACLSchema()
 	}
+
 	ret.Schema["acl"].Elem = elem
 
 	return ret
 }
 
-func dataSourceKeyManagerContainerV1Read(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func dataSourceKeyManagerContainerV1Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	kmClient, err := config.KeyManagerV1Client(GetRegion(d, config))
+
+	kmClient, err := config.KeyManagerV1Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack barbican client: %s", err)
 	}
@@ -122,7 +123,7 @@ func dataSourceKeyManagerContainerV1Read(ctx context.Context, d *schema.Resource
 
 	log.Printf("[DEBUG] Containers List Options: %#v", listOpts)
 
-	allPages, err := containers.List(kmClient, listOpts).AllPages()
+	allPages, err := containers.List(kmClient, listOpts).AllPages(ctx)
 	if err != nil {
 		return diag.Errorf("Unable to query openstack_keymanager_container_v1 containers: %s", err)
 	}
@@ -139,6 +140,7 @@ func dataSourceKeyManagerContainerV1Read(ctx context.Context, d *schema.Resource
 
 	if len(allContainers) > 1 {
 		log.Printf("[DEBUG] Multiple openstack_keymanager_container_v1 results found: %#v", allContainers)
+
 		return diag.Errorf("Your query returned more than one result. Please try a more " +
 			"specific search criteria.")
 	}
@@ -162,10 +164,11 @@ func dataSourceKeyManagerContainerV1Read(ctx context.Context, d *schema.Resource
 
 	d.Set("secret_refs", flattenKeyManagerContainerV1SecretRefs(container.SecretRefs))
 
-	acl, err := acls.GetContainerACL(kmClient, d.Id()).Extract()
+	acl, err := acls.GetContainerACL(ctx, kmClient, d.Id()).Extract()
 	if err != nil {
 		log.Printf("[DEBUG] Unable to get %s container acls: %s", uuid, err)
 	}
+
 	d.Set("acl", flattenKeyManagerV1ACLs(acl))
 
 	// Set the region

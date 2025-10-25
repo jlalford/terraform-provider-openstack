@@ -4,11 +4,10 @@ import (
 	"context"
 	"log"
 
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/rbacpolicies"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/rbacpolicies"
 )
 
 func resourceNetworkingRBACPolicyV2() *schema.Resource {
@@ -43,7 +42,7 @@ func resourceNetworkingRBACPolicyV2() *schema.Resource {
 				ForceNew: true,
 				Required: true,
 				ValidateFunc: validation.StringInSlice([]string{
-					"address_scope", "address_group", "network", "qos_policy", "security_group", "subnetpool",
+					"address_scope", "address_group", "network", "qos_policy", "security_group", "subnetpool", "bgpvpn",
 				}, false),
 			},
 
@@ -66,9 +65,10 @@ func resourceNetworkingRBACPolicyV2() *schema.Resource {
 	}
 }
 
-func resourceNetworkingRBACPolicyV2Create(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceNetworkingRBACPolicyV2Create(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
@@ -81,7 +81,8 @@ func resourceNetworkingRBACPolicyV2Create(ctx context.Context, d *schema.Resourc
 	}
 
 	log.Printf("[DEBUG] Create Options: %#v", createOpts)
-	rbac, err := rbacpolicies.Create(networkingClient, createOpts).Extract()
+
+	rbac, err := rbacpolicies.Create(ctx, networkingClient, createOpts).Extract()
 	if err != nil {
 		return diag.Errorf("Error creating openstack_networking_rbac_policy_v2: %s", err)
 	}
@@ -91,14 +92,15 @@ func resourceNetworkingRBACPolicyV2Create(ctx context.Context, d *schema.Resourc
 	return resourceNetworkingRBACPolicyV2Read(ctx, d, meta)
 }
 
-func resourceNetworkingRBACPolicyV2Read(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceNetworkingRBACPolicyV2Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
 
-	rbac, err := rbacpolicies.Get(networkingClient, d.Id()).Extract()
+	rbac, err := rbacpolicies.Get(ctx, networkingClient, d.Id()).Extract()
 	if err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "Error retrieving openstack_networking_rbac_policy_v2"))
 	}
@@ -116,9 +118,10 @@ func resourceNetworkingRBACPolicyV2Read(ctx context.Context, d *schema.ResourceD
 	return nil
 }
 
-func resourceNetworkingRBACPolicyV2Update(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceNetworkingRBACPolicyV2Update(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
@@ -128,7 +131,7 @@ func resourceNetworkingRBACPolicyV2Update(ctx context.Context, d *schema.Resourc
 	if d.HasChange("target_tenant") {
 		updateOpts.TargetTenant = d.Get("target_tenant").(string)
 
-		_, err := rbacpolicies.Update(networkingClient, d.Id(), updateOpts).Extract()
+		_, err := rbacpolicies.Update(ctx, networkingClient, d.Id(), updateOpts).Extract()
 		if err != nil {
 			return diag.Errorf("Error updating openstack_networking_rbac_policy_v2: %s", err)
 		}
@@ -137,14 +140,15 @@ func resourceNetworkingRBACPolicyV2Update(ctx context.Context, d *schema.Resourc
 	return resourceNetworkingRBACPolicyV2Read(ctx, d, meta)
 }
 
-func resourceNetworkingRBACPolicyV2Delete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceNetworkingRBACPolicyV2Delete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
 
-	err = rbacpolicies.Delete(networkingClient, d.Id()).ExtractErr()
+	err = rbacpolicies.Delete(ctx, networkingClient, d.Id()).ExtractErr()
 	if err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "Error deleting openstack_networking_rbac_policy_v2"))
 	}

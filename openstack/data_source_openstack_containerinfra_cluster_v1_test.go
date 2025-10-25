@@ -1,13 +1,14 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccContainerInfraV1ClusterDataSource_basic(t *testing.T) {
@@ -18,11 +19,12 @@ func TestAccContainerInfraV1ClusterDataSource_basic(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
+			t.Skip("Currently failing in GH-A: cant deploy cluster")
 			testAccPreCheckNonAdminOnly(t)
 			testAccPreCheckContainerInfra(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckContainerInfraV1ClusterDestroy,
+		CheckDestroy:      testAccCheckContainerInfraV1ClusterDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccContainerInfraV1ClusterBasic(keypairName, clusterTemplateName, clusterName, 1),
@@ -71,7 +73,7 @@ func testAccCheckContainerInfraV1ClusterDataSourceID(n string) resource.TestChec
 		}
 
 		if ct.Primary.ID == "" {
-			return fmt.Errorf("Cluster data source ID is not set")
+			return errors.New("Cluster data source ID is not set")
 		}
 
 		return nil
@@ -83,7 +85,7 @@ func testAccContainerInfraV1ClusterDataSourceBasic(clusterResource string) strin
 %s
 
 data "openstack_containerinfra_cluster_v1" "cluster_1" {
-  name = "${openstack_containerinfra_cluster_v1.cluster_1.name}"
+  name = openstack_containerinfra_cluster_v1.cluster_1.name
 }
 `, clusterResource)
 }

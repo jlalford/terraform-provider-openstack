@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccBlockStorageV3QuotasetDataSource(t *testing.T) {
@@ -45,7 +46,7 @@ func testAccCheckBlockStorageQuotasetV3DataSourceID(n string) resource.TestCheck
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Blockstorage quotaset data source ID not set")
+			return errors.New("Blockstorage quotaset data source ID not set")
 		}
 
 		return nil
@@ -63,7 +64,7 @@ func testAccBlockStorageV3QuotasetDataSourceSource() string {
 %s
 
 data "openstack_blockstorage_quotaset_v3" "source" {
-  project_id = "${openstack_identity_project_v3.project.id}"
+  project_id = openstack_identity_project_v3.project.id
 }
 `, testAccBlockStorageV3QuotasetDataSourceBasic)
 }

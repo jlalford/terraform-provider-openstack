@@ -4,10 +4,9 @@ import (
 	"context"
 	"log"
 
+	"github.com/gophercloud/gophercloud/v2/openstack/sharedfilesystems/v2/snapshots"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/gophercloud/gophercloud/openstack/sharedfilesystems/v2/snapshots"
 )
 
 func dataSourceSharedFilesystemSnapshotV2() *schema.Resource {
@@ -68,9 +67,10 @@ func dataSourceSharedFilesystemSnapshotV2() *schema.Resource {
 	}
 }
 
-func dataSourceSharedFilesystemSnapshotV2Read(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func dataSourceSharedFilesystemSnapshotV2Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	sfsClient, err := config.SharedfilesystemV2Client(GetRegion(d, config))
+
+	sfsClient, err := config.SharedfilesystemV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack sharedfilesystem sfsClient: %s", err)
 	}
@@ -84,7 +84,7 @@ func dataSourceSharedFilesystemSnapshotV2Read(ctx context.Context, d *schema.Res
 		Status:      d.Get("status").(string),
 	}
 
-	allPages, err := snapshots.ListDetail(sfsClient, listOpts).AllPages()
+	allPages, err := snapshots.ListDetail(sfsClient, listOpts).AllPages(ctx)
 	if err != nil {
 		return diag.Errorf("Unable to query snapshots: %s", err)
 	}
@@ -99,10 +99,13 @@ func dataSourceSharedFilesystemSnapshotV2Read(ctx context.Context, d *schema.Res
 	}
 
 	var share snapshots.Snapshot
+
 	if len(allSnapshots) > 1 {
 		log.Printf("[DEBUG] Multiple results found: %#v", allSnapshots)
+
 		return diag.Errorf("Your query returned more than one result. Please try a more specific search criteria")
 	}
+
 	share = allSnapshots[0]
 
 	dataSourceSharedFilesystemSnapshotV2Attributes(d, &share, GetRegion(d, config))

@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccComputeV2InstanceDataSource(t *testing.T) {
@@ -40,7 +41,7 @@ func testAccCheckComputeInstanceV2DataSourceID(n string) resource.TestCheckFunc 
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Compute instance data source ID not set")
+			return errors.New("Compute instance data source ID not set")
 		}
 
 		return nil
@@ -67,7 +68,7 @@ func testAccComputeV2InstanceDataSourceSource() string {
 %s
 
 data "openstack_compute_instance_v2" "source_1" {
-  id = "${openstack_compute_instance_v2.instance_1.id}"
+  id = openstack_compute_instance_v2.instance_1.id
 }
 `, testAccComputeV2InstanceDataSourceBasic())
 }

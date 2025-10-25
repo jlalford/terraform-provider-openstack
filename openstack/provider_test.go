@@ -7,13 +7,12 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/gophercloud/gophercloud/v2"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-	"github.com/terraform-provider-openstack/terraform-provider-openstack/openstack/internal/pathorcontents"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/utils/terraform/auth"
-	"github.com/gophercloud/utils/terraform/mutexkv"
+	"github.com/terraform-provider-openstack/terraform-provider-openstack/v3/openstack/internal/pathorcontents"
+	"github.com/terraform-provider-openstack/utils/v2/auth"
+	"github.com/terraform-provider-openstack/utils/v2/mutexkv"
 )
 
 var (
@@ -21,7 +20,6 @@ var (
 	osDBEnvironment              = os.Getenv("OS_DB_ENVIRONMENT")
 	osDBDatastoreVersion         = os.Getenv("OS_DB_DATASTORE_VERSION")
 	osDBDatastoreType            = os.Getenv("OS_DB_DATASTORE_TYPE")
-	osDeprecatedEnvironment      = os.Getenv("OS_DEPRECATED_ENVIRONMENT")
 	osDNSEnvironment             = os.Getenv("OS_DNS_ENVIRONMENT")
 	osExtGwID                    = os.Getenv("OS_EXTGW_ID")
 	osFlavorID                   = os.Getenv("OS_FLAVOR_ID")
@@ -38,14 +36,15 @@ var (
 	osLbFlavorName               = os.Getenv("OS_LB_FLAVOR_NAME")
 	osFwEnvironment              = os.Getenv("OS_FW_ENVIRONMENT")
 	osVpnEnvironment             = os.Getenv("OS_VPN_ENVIRONMENT")
+	osBgpVpnEnvironment          = os.Getenv("OS_BGPVPN_ENVIRONMENT")
 	osContainerInfraEnvironment  = os.Getenv("OS_CONTAINER_INFRA_ENVIRONMENT")
 	osSfsEnvironment             = os.Getenv("OS_SFS_ENVIRONMENT")
 	osTransparentVlanEnvironment = os.Getenv("OS_TRANSPARENT_VLAN_ENVIRONMENT")
 	osKeymanagerEnvironment      = os.Getenv("OS_KEYMANAGER_ENVIRONMENT")
-	osGlanceimportEnvironment    = os.Getenv("OS_GLANCEIMPORT_ENVIRONMENT")
 	osHypervisorEnvironment      = os.Getenv("OS_HYPERVISOR_HOSTNAME")
 	osPortForwardingEnvironment  = os.Getenv("OS_PORT_FORWARDING_ENVIRONMENT")
-	osBlockStorageV2             = os.Getenv("OS_BLOCKSTORAGE_V2")
+	osTaaSEnvironment            = os.Getenv("OS_TAAS_ENVIRONMENT")
+	osWorkflowEnvironment        = os.Getenv("OS_WORKFLOW_ENVIRONMENT")
 	osMagnumHTTPProxy            = os.Getenv("OS_MAGNUM_HTTP_PROXY")
 	osMagnumHTTPSProxy           = os.Getenv("OS_MAGNUM_HTTPS_PROXY")
 	osMagnumNoProxy              = os.Getenv("OS_MAGNUM_NO_PROXY")
@@ -95,23 +94,13 @@ func testAccPreCheckRequiredEnvVars(t *testing.T) {
 
 func testAccPreCheck(t *testing.T) {
 	testAccPreCheckRequiredEnvVars(t)
-
-	// Do not run the test if this is a deprecated testing environment.
-	if osDeprecatedEnvironment != "" {
-		t.Skip("This environment only runs deprecated tests")
-	}
-}
-
-func testAccPreCheckDeprecated(t *testing.T) {
-	testAccPreCheckRequiredEnvVars(t)
-
-	if osDeprecatedEnvironment == "" {
-		t.Skip("This environment does not support deprecated tests")
-	}
 }
 
 func testAccPreCheckDNS(t *testing.T) {
-	testAccPreCheckRequiredEnvVars(t)
+	v := os.Getenv("OS_AUTH_URL")
+	if v == "" {
+		t.Fatal("OS_AUTH_URL must be set for acceptance tests")
+	}
 
 	if osDNSEnvironment == "" {
 		t.Skip("This environment does not support DNS tests")
@@ -119,7 +108,10 @@ func testAccPreCheckDNS(t *testing.T) {
 }
 
 func testAccPreCheckSwift(t *testing.T) {
-	testAccPreCheckRequiredEnvVars(t)
+	v := os.Getenv("OS_AUTH_URL")
+	if v == "" {
+		t.Fatal("OS_AUTH_URL must be set for acceptance tests")
+	}
 
 	if osSwiftEnvironment == "" {
 		t.Skip("This environment does not support Swift tests")
@@ -146,14 +138,6 @@ func testAccPreCheckLB(t *testing.T) {
 	}
 }
 
-func testAccPreCheckBlockStorageV2(t *testing.T) {
-	testAccPreCheckRequiredEnvVars(t)
-
-	if osBlockStorageV2 == "" {
-		t.Skip("This environment does not support BlockStorageV2 tests")
-	}
-}
-
 func testAccPreCheckFW(t *testing.T) {
 	testAccPreCheckRequiredEnvVars(t)
 
@@ -167,6 +151,14 @@ func testAccPreCheckVPN(t *testing.T) {
 
 	if osVpnEnvironment == "" {
 		t.Skip("This environment does not support VPN tests")
+	}
+}
+
+func testAccPreCheckBGPVPN(t *testing.T) {
+	testAccPreCheckRequiredEnvVars(t)
+
+	if osBgpVpnEnvironment == "" {
+		t.Skip("This environment does not support BGP VPN tests")
 	}
 }
 
@@ -232,6 +224,22 @@ func testAccPreCheckPortForwarding(t *testing.T) {
 	}
 }
 
+func testAccPreCheckTaas(t *testing.T) {
+	testAccPreCheckRequiredEnvVars(t)
+
+	if osTaaSEnvironment == "" {
+		t.Skip("This environment does not support 'taas' extension tests")
+	}
+}
+
+func testAccPreCheckWorkflow(t *testing.T) {
+	testAccPreCheckRequiredEnvVars(t)
+
+	if osWorkflowEnvironment == "" {
+		t.Skip("This environment does not support 'workflow' extension tests")
+	}
+}
+
 func testAccPreCheckAdminOnly(t *testing.T) {
 	v := os.Getenv("OS_USERNAME")
 	if v != "admin" {
@@ -246,84 +254,9 @@ func testAccPreCheckNonAdminOnly(t *testing.T) {
 	}
 }
 
-func testAccPreCheckGlanceImport(t *testing.T) {
-	if osGlanceimportEnvironment == "" {
-		t.Skip("This environment does not support Glance import tests")
-	}
-}
-
 func testAccPreCheckHypervisor(t *testing.T) {
 	if osHypervisorEnvironment == "" {
 		t.Skip("This environment does not support Hypervisor data source tests")
-	}
-}
-
-// testAccSkipReleasesBelow will have the test be skipped on releases below a certain
-// one. Releases are named such as 'stable/mitaka', master, etc.
-func testAccSkipReleasesBelow(t *testing.T, release string) {
-	currentBranch := os.Getenv("OS_BRANCH")
-
-	if IsReleasesBelow(t, release) {
-		t.Skipf("this is not supported below %s, testing in %s", release, currentBranch)
-	}
-}
-
-// IsReleasesBelow will return true on releases below a certain
-// one. Releases are named such as 'stable/mitaka', master, etc.
-func IsReleasesBelow(t *testing.T, release string) bool {
-	currentBranch := os.Getenv("OS_BRANCH")
-
-	if SetReleaseNumber(t, currentBranch) < SetReleaseNumber(t, release) {
-		return true
-	}
-	t.Logf("Target release %s is above the current branch %s", release, currentBranch)
-	return false
-}
-
-// testAccSkipReleasesAbove will have the test be skipped on releases above a certain
-// one. The test is always skipped on master release. Releases are named such
-// as 'stable/mitaka', master, etc.
-func testAccSkipReleasesAbove(t *testing.T, release string) {
-	currentBranch := os.Getenv("OS_BRANCH")
-
-	if IsReleasesAbove(t, release) {
-		t.Skipf("this is not supported above %s, testing in %s", release, currentBranch)
-	}
-}
-
-// IsReleasesAbove will return true on releases above a certain
-// one. The result is always true on master release. Releases are named such
-// as 'stable/mitaka', master, etc.
-func IsReleasesAbove(t *testing.T, release string) bool {
-	currentBranch := os.Getenv("OS_BRANCH")
-
-	// Assume master is always too new
-	if SetReleaseNumber(t, currentBranch) > SetReleaseNumber(t, release) {
-		return true
-	}
-	t.Logf("Target release %s is below the current branch %s", release, currentBranch)
-	return false
-}
-
-// SetReleaseNumber returns a number based on the release.
-// This is to allow comparing between releases as with the
-// 2023.1(antelope) release simple string comparisons are
-// not possible.
-func SetReleaseNumber(t *testing.T, release string) int {
-	switch release {
-	case "stable/zed":
-		return 1
-	case "stable/2023.1":
-		return 2
-	case "stable/2023.2":
-		return 3
-	case "stable/2024.1":
-		return 4
-	case "master":
-		return 5
-	default:
-		t.Logf("Release %s is not within the known/expected releases", release)
-		return 0
 	}
 }
 
@@ -339,6 +272,7 @@ func TestAccProvider_caCertFile(t *testing.T) {
 	if os.Getenv("TF_ACC") == "" || os.Getenv("OS_SSL_TESTS") == "" {
 		t.Skip("TF_ACC or OS_SSL_TESTS not set, skipping OpenStack SSL test.")
 	}
+
 	if os.Getenv("OS_CACERT") == "" {
 		t.Skip("OS_CACERT is not set; skipping OpenStack CA test.")
 	}
@@ -351,11 +285,11 @@ func TestAccProvider_caCertFile(t *testing.T) {
 	}
 	defer os.Remove(caFile)
 
-	raw := map[string]interface{}{
+	raw := map[string]any{
 		"cacert_file": caFile,
 	}
 
-	diag := p.Configure(context.Background(), terraform.NewResourceConfigRaw(raw))
+	diag := p.Configure(t.Context(), terraform.NewResourceConfigRaw(raw))
 	if diag != nil {
 		t.Fatalf("Unexpected err when specifying OpenStack CA by file: %v", diag)
 	}
@@ -365,6 +299,7 @@ func TestAccProvider_caCertString(t *testing.T) {
 	if os.Getenv("TF_ACC") == "" || os.Getenv("OS_SSL_TESTS") == "" {
 		t.Skip("TF_ACC or OS_SSL_TESTS not set, skipping OpenStack SSL test.")
 	}
+
 	if os.Getenv("OS_CACERT") == "" {
 		t.Skip("OS_CACERT is not set; skipping OpenStack CA test.")
 	}
@@ -375,11 +310,12 @@ func TestAccProvider_caCertString(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw := map[string]interface{}{
+
+	raw := map[string]any{
 		"cacert_file": caContents,
 	}
 
-	diag := p.Configure(context.Background(), terraform.NewResourceConfigRaw(raw))
+	diag := p.Configure(t.Context(), terraform.NewResourceConfigRaw(raw))
 	if diag != nil {
 		t.Fatalf("Unexpected err when specifying OpenStack CA by string: %v", diag)
 	}
@@ -389,6 +325,7 @@ func TestAccProvider_clientCertFile(t *testing.T) {
 	if os.Getenv("TF_ACC") == "" || os.Getenv("OS_SSL_TESTS") == "" {
 		t.Skip("TF_ACC or OS_SSL_TESTS not set, skipping OpenStack SSL test.")
 	}
+
 	if os.Getenv("OS_CERT") == "" || os.Getenv("OS_KEY") == "" {
 		t.Skip("OS_CERT or OS_KEY is not set; skipping OpenStack client SSL auth test.")
 	}
@@ -399,19 +336,22 @@ func TestAccProvider_clientCertFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	defer os.Remove(certFile)
+
 	keyFile, err := envVarFile("OS_KEY")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	defer os.Remove(keyFile)
 
-	raw := map[string]interface{}{
+	raw := map[string]any{
 		"cert": certFile,
 		"key":  keyFile,
 	}
 
-	diag := p.Configure(context.Background(), terraform.NewResourceConfigRaw(raw))
+	diag := p.Configure(t.Context(), terraform.NewResourceConfigRaw(raw))
 	if diag != nil {
 		t.Fatalf("Unexpected err when specifying OpenStack Client keypair by file: %v", diag)
 	}
@@ -421,6 +361,7 @@ func TestAccProvider_clientCertString(t *testing.T) {
 	if os.Getenv("TF_ACC") == "" || os.Getenv("OS_SSL_TESTS") == "" {
 		t.Skip("TF_ACC or OS_SSL_TESTS not set, skipping OpenStack SSL test.")
 	}
+
 	if os.Getenv("OS_CERT") == "" || os.Getenv("OS_KEY") == "" {
 		t.Skip("OS_CERT or OS_KEY is not set; skipping OpenStack client SSL auth test.")
 	}
@@ -431,17 +372,18 @@ func TestAccProvider_clientCertString(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	keyContents, err := envVarContents("OS_KEY")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	raw := map[string]interface{}{
+	raw := map[string]any{
 		"cert": certContents,
 		"key":  keyContents,
 	}
 
-	diag := p.Configure(context.Background(), terraform.NewResourceConfigRaw(raw))
+	diag := p.Configure(t.Context(), terraform.NewResourceConfigRaw(raw))
 	if diag != nil {
 		t.Fatalf("Unexpected err when specifying OpenStack Client keypair by contents: %v", diag)
 	}
@@ -450,8 +392,9 @@ func TestAccProvider_clientCertString(t *testing.T) {
 func envVarContents(varName string) (string, error) {
 	contents, _, err := pathorcontents.Read(os.Getenv(varName))
 	if err != nil {
-		return "", fmt.Errorf("Error reading %s: %s", varName, err)
+		return "", fmt.Errorf("Error reading %s: %w", varName, err)
 	}
+
 	return contents, nil
 }
 
@@ -463,20 +406,30 @@ func envVarFile(varName string) (string, error) {
 
 	tmpFile, err := os.CreateTemp("", varName)
 	if err != nil {
-		return "", fmt.Errorf("Error creating temp file: %s", err)
+		return "", fmt.Errorf("Error creating temp file: %w", err)
 	}
-	if _, err := tmpFile.Write([]byte(contents)); err != nil {
+
+	if _, err := tmpFile.WriteString(contents); err != nil {
 		_ = os.Remove(tmpFile.Name())
-		return "", fmt.Errorf("Error writing temp file: %s", err)
+
+		return "", fmt.Errorf("Error writing temp file: %w", err)
 	}
+
 	if err := tmpFile.Close(); err != nil {
 		_ = os.Remove(tmpFile.Name())
-		return "", fmt.Errorf("Error closing temp file: %s", err)
+
+		return "", fmt.Errorf("Error closing temp file: %w", err)
 	}
+
 	return tmpFile.Name(), nil
 }
 
-func testAccAuthFromEnv() (*Config, error) {
+func testAccAuthFromEnv(ctx context.Context) (*Config, error) {
+	// If the provider has already been configured, return the existing config.
+	if v, ok := testAccProvider.Meta().(*Config); ok {
+		return v, nil
+	}
+
 	tenantID := os.Getenv("OS_TENANT_ID")
 	if tenantID == "" {
 		tenantID = os.Getenv("OS_PROJECT_ID")
@@ -524,7 +477,7 @@ func testAccAuthFromEnv() (*Config, error) {
 		},
 	}
 
-	if err := config.LoadAndValidate(); err != nil {
+	if err := config.LoadAndValidate(ctx); err != nil {
 		return nil, err
 	}
 
@@ -533,5 +486,6 @@ func testAccAuthFromEnv() (*Config, error) {
 
 func testGetenvBool(env string) bool {
 	ret, _ := strconv.ParseBool(os.Getenv(env))
+
 	return ret
 }

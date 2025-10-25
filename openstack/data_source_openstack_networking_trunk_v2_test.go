@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestAccNetworkingV2TrunkDataSource_nosubports(t *testing.T) {
@@ -12,10 +12,9 @@ func TestAccNetworkingV2TrunkDataSource_nosubports(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckNonAdminOnly(t)
-			testAccSkipReleasesBelow(t, "stable/yoga")
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2TrunkDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2TrunkDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2TrunkDataSourceNoSubports(),
@@ -40,10 +39,9 @@ func TestAccNetworkingV2TrunkDataSource_subports(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckNonAdminOnly(t)
-			testAccSkipReleasesBelow(t, "stable/yoga")
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2TrunkDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2TrunkDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2TrunkDataSourceSubports(),
@@ -70,10 +68,9 @@ func TestAccNetworkingV2TrunkDataSource_tags(t *testing.T) {
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckNonAdminOnly(t)
-			testAccSkipReleasesBelow(t, "stable/yoga")
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2TrunkDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2TrunkDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2TrunkDataSourceTags(),
@@ -107,13 +104,13 @@ resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
   cidr = "192.168.199.0/24"
   ip_version = 4
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 }
 
 resource "openstack_networking_port_v2" "parent_port_1" {
   name = "parent_port_1"
   admin_state_up = "true"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 }
 `
 
@@ -123,12 +120,12 @@ func testAccNetworkingV2TrunkDataSourceNoSubports() string {
 
 resource "openstack_networking_trunk_v2" "trunk_1" {
   name = "trunk_1"
-  port_id = "${openstack_networking_port_v2.parent_port_1.id}"
+  port_id = openstack_networking_port_v2.parent_port_1.id
   admin_state_up = "true"
 }
 
 data "openstack_networking_trunk_v2" "trunk_1" {
-  name = "${openstack_networking_trunk_v2.trunk_1.name}"
+  name = openstack_networking_trunk_v2.trunk_1.name
 }
 `, testAccNetworkingV2TrunkDataSource)
 }
@@ -140,35 +137,35 @@ func testAccNetworkingV2TrunkDataSourceSubports() string {
 resource "openstack_networking_port_v2" "subport_1" {
   name = "subport_1"
   admin_state_up = "true"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 }
 
 resource "openstack_networking_port_v2" "subport_2" {
   name = "subport_2"
   admin_state_up = "true"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 }
 
 resource "openstack_networking_trunk_v2" "trunk_1" {
   name = "trunk_1"
-  port_id = "${openstack_networking_port_v2.parent_port_1.id}"
+  port_id = openstack_networking_port_v2.parent_port_1.id
   admin_state_up = "true"
 
   sub_port {
-    port_id = "${openstack_networking_port_v2.subport_1.id}"
+    port_id = openstack_networking_port_v2.subport_1.id
     segmentation_id = 1
     segmentation_type = "vlan"
   }
 
   sub_port {
-    port_id = "${openstack_networking_port_v2.subport_2.id}"
+    port_id = openstack_networking_port_v2.subport_2.id
     segmentation_id = 2
     segmentation_type = "vlan"
   }
 }
 
 data "openstack_networking_trunk_v2" "trunk_1" {
-  port_id = "${openstack_networking_trunk_v2.trunk_1.port_id}"
+  port_id = openstack_networking_trunk_v2.trunk_1.port_id
 }
 `, testAccNetworkingV2TrunkDataSource)
 }
@@ -179,7 +176,7 @@ func testAccNetworkingV2TrunkDataSourceTags() string {
 
 resource "openstack_networking_trunk_v2" "trunk_1" {
   name = "trunk_1"
-  port_id = "${openstack_networking_port_v2.parent_port_1.id}"
+  port_id = openstack_networking_port_v2.parent_port_1.id
   admin_state_up = "true"
 
   tags = [
@@ -190,7 +187,7 @@ resource "openstack_networking_trunk_v2" "trunk_1" {
 }
 
 data "openstack_networking_trunk_v2" "trunk_1" {
-  admin_state_up = "${openstack_networking_trunk_v2.trunk_1.admin_state_up}"
+  admin_state_up = openstack_networking_trunk_v2.trunk_1.admin_state_up
   tags = [
     "foo",
   ]

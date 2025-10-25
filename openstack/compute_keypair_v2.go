@@ -1,6 +1,6 @@
 package openstack
 
-import "github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
+import "github.com/gophercloud/gophercloud/v2/openstack/compute/v2/keypairs"
 
 const (
 	computeKeyPairV2UserIDMicroversion = "2.10"
@@ -14,6 +14,6 @@ type ComputeKeyPairV2CreateOpts struct {
 
 // ToKeyPairCreateMap casts a CreateOpts struct to a map.
 // It overrides keypairs.ToKeyPairCreateMap to add the ValueSpecs field.
-func (opts ComputeKeyPairV2CreateOpts) ToKeyPairCreateMap() (map[string]interface{}, error) {
+func (opts ComputeKeyPairV2CreateOpts) ToKeyPairCreateMap() (map[string]any, error) {
 	return BuildRequest(opts, "keypair")
 }

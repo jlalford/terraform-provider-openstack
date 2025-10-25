@@ -158,16 +158,17 @@ func dataSourceIdentityAuthScopeV3() *schema.Resource {
 	}
 }
 
-func dataSourceIdentityAuthScopeV3Read(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func dataSourceIdentityAuthScopeV3Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	identityClient, err := config.IdentityV3Client(GetRegion(d, config))
+
+	identityClient, err := config.IdentityV3Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack identity client: %s", err)
 	}
 
 	d.SetId(d.Get("name").(string))
 
-	tokenDetails, err := getTokenDetails(identityClient)
+	tokenDetails, err := getTokenDetails(ctx, identityClient)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -210,7 +211,7 @@ func dataSourceIdentityAuthScopeV3Read(ctx context.Context, d *schema.ResourceDa
 	}
 
 	if d.Get("set_token_id").(bool) {
-		d.Set("token_id", identityClient.ProviderClient.TokenID)
+		d.Set("token_id", identityClient.TokenID)
 	}
 
 	d.Set("region", GetRegion(d, config))

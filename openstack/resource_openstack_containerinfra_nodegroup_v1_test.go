@@ -1,15 +1,16 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/containerinfra/v1/nodegroups"
+	"github.com/gophercloud/gophercloud/v2/openstack/containerinfra/v1/nodegroups"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccContainerInfraV1NodeGroup_basic(t *testing.T) {
@@ -23,17 +24,18 @@ func TestAccContainerInfraV1NodeGroup_basic(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
+			t.Skip("Currently failing in GH-A: cant deploy cluster")
 			testAccPreCheck(t)
 			testAccPreCheckNonAdminOnly(t)
 			testAccPreCheckContainerInfra(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckContainerInfraV1NodeGroupDestroy,
+		CheckDestroy:      testAccCheckContainerInfraV1NodeGroupDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccContainerInfraV1NodeGroupBasic(keypairName, clusterTemplateName, clusterName, nodeGroupName, 1),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckContainerInfraV1NodeGroupExists(resourceName, &nodeGroup),
+					testAccCheckContainerInfraV1NodeGroupExists(t.Context(), resourceName, &nodeGroup),
 					resource.TestCheckResourceAttr(resourceName, "region", osRegionName),
 					resource.TestCheckResourceAttrSet(resourceName, "cluster_id"),
 					resource.TestCheckResourceAttr(resourceName, "name", nodeGroupName),
@@ -54,7 +56,7 @@ func TestAccContainerInfraV1NodeGroup_basic(t *testing.T) {
 			{
 				Config: testAccContainerInfraV1NodeGroupBasic(keypairName, clusterTemplateName, clusterName, nodeGroupName, 2),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckContainerInfraV1NodeGroupExists(resourceName, &nodeGroup),
+					testAccCheckContainerInfraV1NodeGroupExists(t.Context(), resourceName, &nodeGroup),
 					resource.TestCheckResourceAttr(resourceName, "region", osRegionName),
 					resource.TestCheckResourceAttrSet(resourceName, "cluster_id"),
 					resource.TestCheckResourceAttr(resourceName, "name", nodeGroupName),
@@ -87,17 +89,18 @@ func TestAccContainerInfraV1NodeGroup_mergeLabels(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
+			t.Skip("Currently failing in GH-A: cant deploy cluster")
 			testAccPreCheck(t)
 			testAccPreCheckNonAdminOnly(t)
 			testAccPreCheckContainerInfra(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckContainerInfraV1NodeGroupDestroy,
+		CheckDestroy:      testAccCheckContainerInfraV1NodeGroupDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccContainerInfraV1NodeGroupMergeLabels(keypairName, clusterTemplateName, clusterName, nodeGroupName, 1),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckContainerInfraV1NodeGroupExists(resourceName, &nodeGroup),
+					testAccCheckContainerInfraV1NodeGroupExists(t.Context(), resourceName, &nodeGroup),
 					resource.TestCheckResourceAttr(resourceName, "region", osRegionName),
 					resource.TestCheckResourceAttrSet(resourceName, "cluster_id"),
 					resource.TestCheckResourceAttr(resourceName, "name", nodeGroupName),
@@ -119,7 +122,7 @@ func TestAccContainerInfraV1NodeGroup_mergeLabels(t *testing.T) {
 			{
 				Config: testAccContainerInfraV1NodeGroupMergeLabels(keypairName, clusterTemplateName, clusterName, nodeGroupName, 2),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckContainerInfraV1NodeGroupExists(resourceName, &nodeGroup),
+					testAccCheckContainerInfraV1NodeGroupExists(t.Context(), resourceName, &nodeGroup),
 					resource.TestCheckResourceAttr(resourceName, "region", osRegionName),
 					resource.TestCheckResourceAttrSet(resourceName, "cluster_id"),
 					resource.TestCheckResourceAttr(resourceName, "name", nodeGroupName),
@@ -153,17 +156,18 @@ func TestAccContainerInfraV1NodeGroup_overrideLabels(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
+			t.Skip("Currently failing in GH-A: cant deploy cluster")
 			testAccPreCheck(t)
 			testAccPreCheckNonAdminOnly(t)
 			testAccPreCheckContainerInfra(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckContainerInfraV1NodeGroupDestroy,
+		CheckDestroy:      testAccCheckContainerInfraV1NodeGroupDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccContainerInfraV1NodeGroupOverrideLabels(keypairName, clusterTemplateName, clusterName, nodeGroupName, 1),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckContainerInfraV1NodeGroupExists(resourceName, &nodeGroup),
+					testAccCheckContainerInfraV1NodeGroupExists(t.Context(), resourceName, &nodeGroup),
 					resource.TestCheckResourceAttr(resourceName, "region", osRegionName),
 					resource.TestCheckResourceAttrSet(resourceName, "cluster_id"),
 					resource.TestCheckResourceAttr(resourceName, "name", nodeGroupName),
@@ -185,7 +189,7 @@ func TestAccContainerInfraV1NodeGroup_overrideLabels(t *testing.T) {
 			{
 				Config: testAccContainerInfraV1NodeGroupOverrideLabels(keypairName, clusterTemplateName, clusterName, nodeGroupName, 2),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckContainerInfraV1NodeGroupExists(resourceName, &nodeGroup),
+					testAccCheckContainerInfraV1NodeGroupExists(t.Context(), resourceName, &nodeGroup),
 					resource.TestCheckResourceAttr(resourceName, "region", osRegionName),
 					resource.TestCheckResourceAttrSet(resourceName, "cluster_id"),
 					resource.TestCheckResourceAttr(resourceName, "name", nodeGroupName),
@@ -208,7 +212,7 @@ func TestAccContainerInfraV1NodeGroup_overrideLabels(t *testing.T) {
 	})
 }
 
-func testAccCheckContainerInfraV1NodeGroupExists(n string, nodeGroup *nodegroups.NodeGroup) resource.TestCheckFunc {
+func testAccCheckContainerInfraV1NodeGroupExists(ctx context.Context, n string, nodeGroup *nodegroups.NodeGroup) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -216,27 +220,30 @@ func testAccCheckContainerInfraV1NodeGroupExists(n string, nodeGroup *nodegroups
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		containerInfraClient, err := config.ContainerInfraV1Client(osRegionName)
+
+		containerInfraClient, err := config.ContainerInfraV1Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack container infra client: %s", err)
+			return fmt.Errorf("Error creating OpenStack container infra client: %w", err)
 		}
 
 		containerInfraClient.Microversion = containerInfraV1NodeGroupMinMicroversion
-		clusterID, nodeGroupID, err := parseNodeGroupID(rs.Primary.ID)
+
+		clusterID, nodeGroupID, err := parsePairedIDs(rs.Primary.ID, "openstack_containerinfra_nodegroup_v1")
 		if err != nil {
 			return err
 		}
-		found, err := nodegroups.Get(containerInfraClient, clusterID, nodeGroupID).Extract()
+
+		found, err := nodegroups.Get(ctx, containerInfraClient, clusterID, nodeGroupID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.UUID != nodeGroupID {
-			return fmt.Errorf("Nodegroup not found")
+			return errors.New("Nodegroup not found")
 		}
 
 		*nodeGroup = *found
@@ -245,31 +252,35 @@ func testAccCheckContainerInfraV1NodeGroupExists(n string, nodeGroup *nodegroups
 	}
 }
 
-func testAccCheckContainerInfraV1NodeGroupDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	containerInfraClient, err := config.ContainerInfraV1Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack container infra client: %s", err)
-	}
+func testAccCheckContainerInfraV1NodeGroupDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	containerInfraClient.Microversion = containerInfraV1NodeGroupMinMicroversion
-
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_containerinfra_nodegroup_v1" {
-			continue
-		}
-		clusterID, nodeGroupID, err := parseVolumeTypeAccessID(rs.Primary.ID)
+		containerInfraClient, err := config.ContainerInfraV1Client(ctx, osRegionName)
 		if err != nil {
-			return err
+			return fmt.Errorf("Error creating OpenStack container infra client: %w", err)
 		}
 
-		_, err = nodegroups.Get(containerInfraClient, clusterID, nodeGroupID).Extract()
-		if err == nil {
-			return fmt.Errorf("node group still exists")
+		containerInfraClient.Microversion = containerInfraV1NodeGroupMinMicroversion
+
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_containerinfra_nodegroup_v1" {
+				continue
+			}
+
+			clusterID, nodeGroupID, err := parsePairedIDs(rs.Primary.ID, "openstack_containerinfra_nodegroup_v1")
+			if err != nil {
+				return err
+			}
+
+			_, err = nodegroups.Get(ctx, containerInfraClient, clusterID, nodeGroupID).Extract()
+			if err == nil {
+				return errors.New("node group still exists")
+			}
 		}
+
+		return nil
 	}
-
-	return nil
 }
 
 func testAccContainerInfraV1NodeGroupBasic(keypairName, clusterTemplateName, clusterName string, nodeGroupName string, nodeCount int) string {
@@ -301,15 +312,15 @@ resource "openstack_containerinfra_clustertemplate_v1" "clustertemplate_1" {
 
 resource "openstack_containerinfra_cluster_v1" "cluster_1" {
   name                 = "%s"
-  cluster_template_id  = "${openstack_containerinfra_clustertemplate_v1.clustertemplate_1.id}"
+  cluster_template_id  = openstack_containerinfra_clustertemplate_v1.clustertemplate_1.id
   master_count         = 1
   node_count           = 1
-  keypair              = "${openstack_compute_keypair_v2.keypair_1.name}"
+  keypair              = openstack_compute_keypair_v2.keypair_1.name
 }
 
 resource "openstack_containerinfra_nodegroup_v1" "nodegroup_1" {
   name                 = "%s"
-  cluster_id           = "${openstack_containerinfra_cluster_v1.cluster_1.id}"
+  cluster_id           = openstack_containerinfra_cluster_v1.cluster_1.id
   node_count           = %d
   docker_volume_size   = 10
   role				   = "myRole"
@@ -350,15 +361,15 @@ resource "openstack_containerinfra_clustertemplate_v1" "clustertemplate_1" {
 
 resource "openstack_containerinfra_cluster_v1" "cluster_1" {
   name                 = "%s"
-  cluster_template_id  = "${openstack_containerinfra_clustertemplate_v1.clustertemplate_1.id}"
+  cluster_template_id  = openstack_containerinfra_clustertemplate_v1.clustertemplate_1.id
   master_count         = 1
   node_count           = 1
-  keypair              = "${openstack_compute_keypair_v2.keypair_1.name}"
+  keypair              = openstack_compute_keypair_v2.keypair_1.name
 }
 
 resource "openstack_containerinfra_nodegroup_v1" "nodegroup_1" {
   name                 = "%s"
-  cluster_id           = "${openstack_containerinfra_cluster_v1.cluster_1.id}"
+  cluster_id           = openstack_containerinfra_cluster_v1.cluster_1.id
   node_count           = %d
   docker_volume_size   = 10
   role				   = "myRole"
@@ -403,15 +414,15 @@ resource "openstack_containerinfra_clustertemplate_v1" "clustertemplate_1" {
 
 resource "openstack_containerinfra_cluster_v1" "cluster_1" {
   name                 = "%s"
-  cluster_template_id  = "${openstack_containerinfra_clustertemplate_v1.clustertemplate_1.id}"
+  cluster_template_id  = openstack_containerinfra_clustertemplate_v1.clustertemplate_1.id
   master_count         = 1
   node_count           = 1
-  keypair              = "${openstack_compute_keypair_v2.keypair_1.name}"
+  keypair              = openstack_compute_keypair_v2.keypair_1.name
 }
 
 resource "openstack_containerinfra_nodegroup_v1" "nodegroup_1" {
   name                 = "%s"
-  cluster_id           = "${openstack_containerinfra_cluster_v1.cluster_1.id}"
+  cluster_id           = openstack_containerinfra_cluster_v1.cluster_1.id
   node_count           = %d
   docker_volume_size   = 10
   role				   = "myRole"

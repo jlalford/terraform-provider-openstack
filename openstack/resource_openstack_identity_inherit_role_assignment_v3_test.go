@@ -1,32 +1,35 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/osinherit"
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/roles"
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/users"
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/osinherit"
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/roles"
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/users"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccIdentityV3InheritRoleAssignment_basic(t *testing.T) {
 	var role roles.Role
+
 	var user users.User
+
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIdentityV3InheritRoleAssignmentDestroy,
+		CheckDestroy:      testAccCheckIdentityV3InheritRoleAssignmentDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIdentityV3InheritRoleAssignmentBasic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3InheritRoleAssignmentExists("openstack_identity_inherit_role_assignment_v3.role_assignment_1", &role, &user),
+					testAccCheckIdentityV3InheritRoleAssignmentExists(t.Context(), "openstack_identity_inherit_role_assignment_v3.role_assignment_1", &role, &user),
 					resource.TestCheckResourceAttr(
 						"openstack_identity_inherit_role_assignment_v3.role_assignment_1", "domain_id", "default"),
 					resource.TestCheckResourceAttrPtr(
@@ -39,40 +42,43 @@ func TestAccIdentityV3InheritRoleAssignment_basic(t *testing.T) {
 	})
 }
 
-func testAccCheckIdentityV3InheritRoleAssignmentDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	identityClient, err := config.IdentityV3Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack identity client: %s", err)
-	}
+func testAccCheckIdentityV3InheritRoleAssignmentDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_identity_inherit_role_assignment_v3" {
-			continue
-		}
-
-		domainID, projectID, groupID, userID, roleID, err := identityRoleAssignmentV3ParseID(rs.Primary.ID)
+		identityClient, err := config.IdentityV3Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error determining openstack_identity_inherit_role_assignment_v3 ID: %s", err)
+			return fmt.Errorf("Error creating OpenStack identity client: %w", err)
 		}
 
-		var opts = osinherit.ValidateOpts{
-			GroupID:   groupID,
-			DomainID:  domainID,
-			ProjectID: projectID,
-			UserID:    userID,
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_identity_inherit_role_assignment_v3" {
+				continue
+			}
+
+			domainID, projectID, groupID, userID, roleID, err := identityRoleAssignmentV3ParseID(rs.Primary.ID)
+			if err != nil {
+				return fmt.Errorf("Error determining openstack_identity_inherit_role_assignment_v3 ID: %w", err)
+			}
+
+			opts := osinherit.ValidateOpts{
+				GroupID:   groupID,
+				DomainID:  domainID,
+				ProjectID: projectID,
+				UserID:    userID,
+			}
+
+			err = osinherit.Validate(ctx, identityClient, roleID, opts).ExtractErr()
+			if err == nil {
+				return errors.New("Inherit Role assignment still exists")
+			}
 		}
 
-		err = osinherit.Validate(identityClient, roleID, opts).ExtractErr()
-		if err == nil {
-			return fmt.Errorf("Inherit Role assignment still exists")
-		}
+		return nil
 	}
-
-	return nil
 }
 
-func testAccCheckIdentityV3InheritRoleAssignmentExists(n string, role *roles.Role, user *users.User) resource.TestCheckFunc {
+func testAccCheckIdentityV3InheritRoleAssignmentExists(ctx context.Context, n string, role *roles.Role, user *users.User) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -80,41 +86,45 @@ func testAccCheckIdentityV3InheritRoleAssignmentExists(n string, role *roles.Rol
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		identityClient, err := config.IdentityV3Client(osRegionName)
+
+		identityClient, err := config.IdentityV3Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack identity client: %s", err)
+			return fmt.Errorf("Error creating OpenStack identity client: %w", err)
 		}
 
 		domainID, projectID, groupID, userID, roleID, err := identityRoleAssignmentV3ParseID(rs.Primary.ID)
 		if err != nil {
-			return fmt.Errorf("Error determining openstack_identity_inherit_role_assignment_v3 ID: %s", err)
+			return fmt.Errorf("Error determining openstack_identity_inherit_role_assignment_v3 ID: %w", err)
 		}
 
-		var opts = osinherit.ValidateOpts{
+		opts := osinherit.ValidateOpts{
 			GroupID:   groupID,
 			DomainID:  domainID,
 			ProjectID: projectID,
 			UserID:    userID,
 		}
 
-		err = osinherit.Validate(identityClient, roleID, opts).ExtractErr()
+		err = osinherit.Validate(ctx, identityClient, roleID, opts).ExtractErr()
 		if err != nil {
 			return err
 		}
 
-		u, err := users.Get(identityClient, userID).Extract()
+		u, err := users.Get(ctx, identityClient, userID).Extract()
 		if err != nil {
-			return fmt.Errorf("User not found")
+			return errors.New("User not found")
 		}
+
 		*user = *u
-		r, err := roles.Get(identityClient, roleID).Extract()
+
+		r, err := roles.Get(ctx, identityClient, roleID).Extract()
 		if err != nil {
-			return fmt.Errorf("Role not found")
+			return errors.New("Role not found")
 		}
+
 		*role = *r
 
 		return nil
@@ -133,8 +143,8 @@ resource "openstack_identity_role_v3" "role_1" {
 }
 
 resource "openstack_identity_inherit_role_assignment_v3" "role_assignment_1" {
-  user_id = "${openstack_identity_user_v3.user_1.id}"
+  user_id = openstack_identity_user_v3.user_1.id
   domain_id = "default"
-  role_id = "${openstack_identity_role_v3.role_1.id}"
+  role_id = openstack_identity_role_v3.role_1.id
 }
 `

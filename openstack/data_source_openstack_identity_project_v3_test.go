@@ -1,16 +1,17 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccOpenStackIdentityV3ProjectDataSource_basic(t *testing.T) {
-	projectName := fmt.Sprintf("tf_test_%s", acctest.RandString(5))
+	projectName := "tf_test_" + acctest.RandString(5)
 	projectDescription := acctest.RandString(20)
 	projectTag1 := acctest.RandString(20)
 	projectTag2 := acctest.RandString(20)
@@ -46,7 +47,7 @@ func TestAccOpenStackIdentityV3ProjectDataSource_basic(t *testing.T) {
 }
 
 func TestAccOpenStackIdentityV3ProjectDataSource_withProjectID(t *testing.T) {
-	projectName := fmt.Sprintf("tf_test_%s", acctest.RandString(5))
+	projectName := "tf_test_" + acctest.RandString(5)
 	projectDescription := acctest.RandString(20)
 	projectTag1 := acctest.RandString(20)
 	projectTag2 := acctest.RandString(20)
@@ -89,7 +90,7 @@ func testAccCheckIdentityV3ProjectDataSourceID(n string) resource.TestCheckFunc 
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Project data source ID not set")
+			return errors.New("Project data source ID not set")
 		}
 
 		return nil
@@ -111,7 +112,7 @@ func testAccOpenStackIdentityProjectV3DataSourceBasic(name, description, tag1, t
 	%s
 
 	data "openstack_identity_project_v3" "project_1" {
-      name = "${openstack_identity_project_v3.project_1.name}"
+      name = openstack_identity_project_v3.project_1.name
 	}
 `, testAccOpenStackIdentityProjectV3DataSourceProject(name, description, tag1, tag2))
 }
@@ -121,7 +122,7 @@ func testAccOpenStackIdentityProjectV3DataSourceWithProjectID(name, description,
 	%s
 
 	data "openstack_identity_project_v3" "project_1" {
-      project_id = "${openstack_identity_project_v3.project_1.id}"
+      project_id = openstack_identity_project_v3.project_1.id
 	}
 `, testAccOpenStackIdentityProjectV3DataSourceProject(name, description, tag1, tag2))
 }

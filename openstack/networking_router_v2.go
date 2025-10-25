@@ -1,17 +1,19 @@
 package openstack
 
 import (
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"context"
+	"net/http"
 
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/routers"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/layer3/routers"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 )
 
-func resourceNetworkingRouterV2StateRefreshFunc(client *gophercloud.ServiceClient, routerID string) resource.StateRefreshFunc {
-	return func() (interface{}, string, error) {
-		n, err := routers.Get(client, routerID).Extract()
+func resourceNetworkingRouterV2StateRefreshFunc(ctx context.Context, client *gophercloud.ServiceClient, routerID string) retry.StateRefreshFunc {
+	return func() (any, string, error) {
+		n, err := routers.Get(ctx, client, routerID).Extract()
 		if err != nil {
-			if _, ok := err.(gophercloud.ErrDefault404); ok {
+			if gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
 				return n, "DELETED", nil
 			}
 
@@ -22,11 +24,11 @@ func resourceNetworkingRouterV2StateRefreshFunc(client *gophercloud.ServiceClien
 	}
 }
 
-func expandNetworkingRouterExternalFixedIPsV2(externalFixedIPs []interface{}) []routers.ExternalFixedIP {
+func expandNetworkingRouterExternalFixedIPsV2(externalFixedIPs []any) []routers.ExternalFixedIP {
 	fixedIPs := make([]routers.ExternalFixedIP, len(externalFixedIPs))
 
 	for i, raw := range externalFixedIPs {
-		rawMap := raw.(map[string]interface{})
+		rawMap := raw.(map[string]any)
 
 		fixedIPs[i] = routers.ExternalFixedIP{
 			SubnetID:  rawMap["subnet_id"].(string),
@@ -37,7 +39,7 @@ func expandNetworkingRouterExternalFixedIPsV2(externalFixedIPs []interface{}) []
 	return fixedIPs
 }
 
-func expandNetworkingRouterExternalSubnetIDsV2(externalSubnetIDs []interface{}) []routers.ExternalFixedIP {
+func expandNetworkingRouterExternalSubnetIDsV2(externalSubnetIDs []any) []routers.ExternalFixedIP {
 	subnetIDs := make([]routers.ExternalFixedIP, len(externalSubnetIDs))
 
 	for i, raw := range externalSubnetIDs {

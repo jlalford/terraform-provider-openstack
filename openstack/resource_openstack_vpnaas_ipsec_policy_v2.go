@@ -2,16 +2,16 @@ package openstack
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"net/http"
 	"time"
 
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/vpnaas/ipsecpolicies"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/vpnaas/ipsecpolicies"
 )
 
 func resourceIPSecPolicyV2() *schema.Resource {
@@ -26,6 +26,8 @@ func resourceIPSecPolicyV2() *schema.Resource {
 
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
+			Update: schema.DefaultTimeout(10 * time.Minute),
+			Delete: schema.DefaultTimeout(10 * time.Minute),
 		},
 
 		Schema: map[string]*schema.Schema{
@@ -40,45 +42,38 @@ func resourceIPSecPolicyV2() *schema.Resource {
 				Optional: true,
 			},
 			"auth_algorithm": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Computed: true,
-				ValidateFunc: validation.StringInSlice([]string{
-					"sha1", "sha256", "sha384", "sha512",
-				}, false),
+				Type:         schema.TypeString,
+				Optional:     true,
+				Computed:     true,
+				ValidateFunc: resourceIPSecPolicyV2AuthAlgorithm,
 			},
 			"encapsulation_mode": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Computed: true,
-				ValidateFunc: validation.StringInSlice([]string{
-					"tunnel", "transport",
-				}, false),
+				Type:         schema.TypeString,
+				Optional:     true,
+				Computed:     true,
+				ValidateFunc: resourceIPSecPolicyV2EncapsulationMode,
 			},
 			"pfs": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Computed: true,
-				ValidateFunc: validation.StringInSlice([]string{
-					"group2", "group5", "group14",
-				}, false),
+				Type:         schema.TypeString,
+				Optional:     true,
+				Computed:     true,
+				ValidateFunc: resourceIPSecPolicyV2PFS,
 			},
 			"encryption_algorithm": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Computed: true,
+				Type:         schema.TypeString,
+				Optional:     true,
+				Computed:     true,
+				ValidateFunc: resourceIPSecPolicyV2EncryptionAlgorithm,
 			},
 			"description": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
 			"transform_protocol": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Computed: true,
-				ValidateFunc: validation.StringInSlice([]string{
-					"esp", "ah", "ah-esp",
-				}, false),
+				Type:         schema.TypeString,
+				Optional:     true,
+				Computed:     true,
+				ValidateFunc: resourceIPSecPolicyV2TransformProtocol,
 			},
 
 			"tenant_id": {
@@ -115,18 +110,19 @@ func resourceIPSecPolicyV2() *schema.Resource {
 	}
 }
 
-func resourceIPSecPolicyV2Create(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceIPSecPolicyV2Create(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
 
-	encapsulationMode := resourceIPSecPolicyV2EncapsulationMode(d.Get("encapsulation_mode").(string))
-	authAlgorithm := resourceIPSecPolicyV2AuthAlgorithm(d.Get("auth_algorithm").(string))
-	encryptionAlgorithm := resourceIPSecPolicyV2EncryptionAlgorithm(d.Get("encryption_algorithm").(string))
-	pfs := resourceIPSecPolicyV2PFS(d.Get("pfs").(string))
-	transformProtocol := resourceIPSecPolicyV2TransformProtocol(d.Get("transform_protocol").(string))
+	encapsulationMode := ipsecpolicies.EncapsulationMode(d.Get("encapsulation_mode").(string))
+	authAlgorithm := ipsecpolicies.AuthAlgorithm(d.Get("auth_algorithm").(string))
+	encryptionAlgorithm := ipsecpolicies.EncryptionAlgorithm(d.Get("encryption_algorithm").(string))
+	pfs := ipsecpolicies.PFS(d.Get("pfs").(string))
+	transformProtocol := ipsecpolicies.TransformProtocol(d.Get("transform_protocol").(string))
 	lifetime := resourceIPSecPolicyV2LifetimeCreateOpts(d.Get("lifetime").(*schema.Set))
 
 	opts := IPSecPolicyCreateOpts{
@@ -146,19 +142,20 @@ func resourceIPSecPolicyV2Create(ctx context.Context, d *schema.ResourceData, me
 
 	log.Printf("[DEBUG] Create IPSec policy: %#v", opts)
 
-	policy, err := ipsecpolicies.Create(networkingClient, opts).Extract()
+	policy, err := ipsecpolicies.Create(ctx, networkingClient, opts).Extract()
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	stateConf := &resource.StateChangeConf{
+	stateConf := &retry.StateChangeConf{
 		Pending:    []string{"PENDING_CREATE"},
 		Target:     []string{"ACTIVE"},
-		Refresh:    waitForIPSecPolicyCreation(networkingClient, policy.ID),
+		Refresh:    waitForIPSecPolicyCreation(ctx, networkingClient, policy.ID),
 		Timeout:    d.Timeout(schema.TimeoutCreate),
 		Delay:      0,
 		MinTimeout: 2 * time.Second,
 	}
+
 	_, err = stateConf.WaitForStateContext(ctx)
 	if err != nil {
 		return diag.Errorf(
@@ -172,16 +169,17 @@ func resourceIPSecPolicyV2Create(ctx context.Context, d *schema.ResourceData, me
 	return resourceIPSecPolicyV2Read(ctx, d, meta)
 }
 
-func resourceIPSecPolicyV2Read(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceIPSecPolicyV2Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	log.Printf("[DEBUG] Retrieve information about IPSec policy: %s", d.Id())
 
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
 
-	policy, err := ipsecpolicies.Get(networkingClient, d.Id()).Extract()
+	policy, err := ipsecpolicies.Get(ctx, networkingClient, d.Id()).Extract()
 	if err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "IPSec policy"))
 	}
@@ -199,10 +197,12 @@ func resourceIPSecPolicyV2Read(ctx context.Context, d *schema.ResourceData, meta
 	d.Set("region", GetRegion(d, config))
 
 	// Set the lifetime
-	var lifetimeMap = make(map[string]interface{})
+	lifetimeMap := make(map[string]any)
 	lifetimeMap["units"] = policy.Lifetime.Units
 	lifetimeMap["value"] = policy.Lifetime.Value
-	var lifetime []map[string]interface{}
+
+	var lifetime []map[string]any
+
 	lifetime = append(lifetime, lifetimeMap)
 	if err := d.Set("lifetime", &lifetime); err != nil {
 		log.Printf("[WARN] unable to set IPSec policy lifetime")
@@ -211,14 +211,16 @@ func resourceIPSecPolicyV2Read(ctx context.Context, d *schema.ResourceData, meta
 	return nil
 }
 
-func resourceIPSecPolicyV2Update(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceIPSecPolicyV2Update(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
 
 	var hasChange bool
+
 	opts := ipsecpolicies.UpdateOpts{}
 
 	if d.HasChange("name") {
@@ -234,27 +236,27 @@ func resourceIPSecPolicyV2Update(ctx context.Context, d *schema.ResourceData, me
 	}
 
 	if d.HasChange("auth_algorithm") {
-		opts.AuthAlgorithm = resourceIPSecPolicyV2AuthAlgorithm(d.Get("auth_algorithm").(string))
+		opts.AuthAlgorithm = ipsecpolicies.AuthAlgorithm(d.Get("auth_algorithm").(string))
 		hasChange = true
 	}
 
 	if d.HasChange("encryption_algorithm") {
-		opts.EncryptionAlgorithm = resourceIPSecPolicyV2EncryptionAlgorithm(d.Get("encryption_algorithm").(string))
+		opts.EncryptionAlgorithm = ipsecpolicies.EncryptionAlgorithm(d.Get("encryption_algorithm").(string))
 		hasChange = true
 	}
 
 	if d.HasChange("transform_protocol") {
-		opts.TransformProtocol = resourceIPSecPolicyV2TransformProtocol(d.Get("transform_protocol").(string))
+		opts.TransformProtocol = ipsecpolicies.TransformProtocol(d.Get("transform_protocol").(string))
 		hasChange = true
 	}
 
 	if d.HasChange("pfs") {
-		opts.PFS = resourceIPSecPolicyV2PFS(d.Get("pfs").(string))
+		opts.PFS = ipsecpolicies.PFS(d.Get("pfs").(string))
 		hasChange = true
 	}
 
 	if d.HasChange("encapsulation_mode") {
-		opts.EncapsulationMode = resourceIPSecPolicyV2EncapsulationMode(d.Get("encapsulation_mode").(string))
+		opts.EncapsulationMode = ipsecpolicies.EncapsulationMode(d.Get("encapsulation_mode").(string))
 		hasChange = true
 	}
 
@@ -267,15 +269,15 @@ func resourceIPSecPolicyV2Update(ctx context.Context, d *schema.ResourceData, me
 	log.Printf("[DEBUG] Updating IPSec policy with id %s: %#v", d.Id(), opts)
 
 	if hasChange {
-		_, err = ipsecpolicies.Update(networkingClient, d.Id(), opts).Extract()
+		_, err = ipsecpolicies.Update(ctx, networkingClient, d.Id(), opts).Extract()
 		if err != nil {
 			return diag.FromErr(err)
 		}
 
-		stateConf := &resource.StateChangeConf{
+		stateConf := &retry.StateChangeConf{
 			Pending:    []string{"PENDING_UPDATE"},
 			Target:     []string{"ACTIVE"},
-			Refresh:    waitForIPSecPolicyUpdate(networkingClient, d.Id()),
+			Refresh:    waitForIPSecPolicyUpdate(ctx, networkingClient, d.Id()),
 			Timeout:    d.Timeout(schema.TimeoutCreate),
 			Delay:      0,
 			MinTimeout: 2 * time.Second,
@@ -284,22 +286,24 @@ func resourceIPSecPolicyV2Update(ctx context.Context, d *schema.ResourceData, me
 			return diag.FromErr(err)
 		}
 	}
+
 	return resourceIPSecPolicyV2Read(ctx, d, meta)
 }
 
-func resourceIPSecPolicyV2Delete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceIPSecPolicyV2Delete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	log.Printf("[DEBUG] Destroy IPSec policy: %s", d.Id())
 
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
 
-	stateConf := &resource.StateChangeConf{
+	stateConf := &retry.StateChangeConf{
 		Pending:    []string{"ACTIVE"},
 		Target:     []string{"DELETED"},
-		Refresh:    waitForIPSecPolicyDeletion(networkingClient, d.Id()),
+		Refresh:    waitForIPSecPolicyDeletion(ctx, networkingClient, d.Id()),
 		Timeout:    d.Timeout(schema.TimeoutCreate),
 		Delay:      0,
 		MinTimeout: 2 * time.Second,
@@ -312,14 +316,14 @@ func resourceIPSecPolicyV2Delete(ctx context.Context, d *schema.ResourceData, me
 	return nil
 }
 
-func waitForIPSecPolicyDeletion(networkingClient *gophercloud.ServiceClient, id string) resource.StateRefreshFunc {
-	return func() (interface{}, string, error) {
-		err := ipsecpolicies.Delete(networkingClient, id).Err
+func waitForIPSecPolicyDeletion(ctx context.Context, networkingClient *gophercloud.ServiceClient, id string) retry.StateRefreshFunc {
+	return func() (any, string, error) {
+		err := ipsecpolicies.Delete(ctx, networkingClient, id).Err
 		if err == nil {
 			return "", "DELETED", nil
 		}
 
-		if _, ok := err.(gophercloud.ErrDefault409); ok {
+		if gophercloud.ResponseCodeIs(err, http.StatusConflict) {
 			return nil, "ACTIVE", nil
 		}
 
@@ -327,87 +331,122 @@ func waitForIPSecPolicyDeletion(networkingClient *gophercloud.ServiceClient, id 
 	}
 }
 
-func waitForIPSecPolicyCreation(networkingClient *gophercloud.ServiceClient, id string) resource.StateRefreshFunc {
-	return func() (interface{}, string, error) {
-		policy, err := ipsecpolicies.Get(networkingClient, id).Extract()
+func waitForIPSecPolicyCreation(ctx context.Context, networkingClient *gophercloud.ServiceClient, id string) retry.StateRefreshFunc {
+	return func() (any, string, error) {
+		policy, err := ipsecpolicies.Get(ctx, networkingClient, id).Extract()
 		if err != nil {
 			return "", "PENDING_CREATE", nil
 		}
+
 		return policy, "ACTIVE", nil
 	}
 }
 
-func waitForIPSecPolicyUpdate(networkingClient *gophercloud.ServiceClient, id string) resource.StateRefreshFunc {
-	return func() (interface{}, string, error) {
-		policy, err := ipsecpolicies.Get(networkingClient, id).Extract()
+func waitForIPSecPolicyUpdate(ctx context.Context, networkingClient *gophercloud.ServiceClient, id string) retry.StateRefreshFunc {
+	return func() (any, string, error) {
+		policy, err := ipsecpolicies.Get(ctx, networkingClient, id).Extract()
 		if err != nil {
 			return "", "PENDING_UPDATE", nil
 		}
+
 		return policy, "ACTIVE", nil
 	}
 }
 
-func resourceIPSecPolicyV2TransformProtocol(trp string) ipsecpolicies.TransformProtocol {
-	var protocol ipsecpolicies.TransformProtocol
-	switch trp {
-	case "esp":
-		protocol = ipsecpolicies.TransformProtocolESP
-	case "ah":
-		protocol = ipsecpolicies.TransformProtocolAH
-	case "ah-esp":
-		protocol = ipsecpolicies.TransformProtocolAHESP
+func resourceIPSecPolicyV2TransformProtocol(v any, k string) ([]string, []error) {
+	switch ipsecpolicies.TransformProtocol(v.(string)) {
+	case ipsecpolicies.TransformProtocolESP,
+		ipsecpolicies.TransformProtocolAH,
+		ipsecpolicies.TransformProtocolAHESP:
+		return nil, nil
 	}
-	return protocol
+
+	return nil, []error{fmt.Errorf("unknown %q %s for openstack_vpnaas_ipsec_policy_v2", k, v)}
 }
-func resourceIPSecPolicyV2PFS(pfsString string) ipsecpolicies.PFS {
-	var pfs ipsecpolicies.PFS
-	switch pfsString {
-	case "group2":
-		pfs = ipsecpolicies.PFSGroup2
-	case "group5":
-		pfs = ipsecpolicies.PFSGroup5
-	case "group14":
-		pfs = ipsecpolicies.PFSGroup14
+
+func resourceIPSecPolicyV2PFS(v any, k string) ([]string, []error) {
+	switch ipsecpolicies.PFS(v.(string)) {
+	case ipsecpolicies.PFSGroup2,
+		ipsecpolicies.PFSGroup5,
+		ipsecpolicies.PFSGroup14,
+		ipsecpolicies.PFSGroup15,
+		ipsecpolicies.PFSGroup16,
+		ipsecpolicies.PFSGroup17,
+		ipsecpolicies.PFSGroup18,
+		ipsecpolicies.PFSGroup19,
+		ipsecpolicies.PFSGroup20,
+		ipsecpolicies.PFSGroup21,
+		ipsecpolicies.PFSGroup22,
+		ipsecpolicies.PFSGroup23,
+		ipsecpolicies.PFSGroup24,
+		ipsecpolicies.PFSGroup25,
+		ipsecpolicies.PFSGroup26,
+		ipsecpolicies.PFSGroup27,
+		ipsecpolicies.PFSGroup28,
+		ipsecpolicies.PFSGroup29,
+		ipsecpolicies.PFSGroup30,
+		ipsecpolicies.PFSGroup31:
+		return nil, nil
 	}
-	return pfs
+
+	return nil, []error{fmt.Errorf("unknown %q %s for openstack_vpnaas_ipsec_policy_v2", k, v)}
 }
-func resourceIPSecPolicyV2EncryptionAlgorithm(encryptionAlgo string) ipsecpolicies.EncryptionAlgorithm {
-	var alg ipsecpolicies.EncryptionAlgorithm
-	switch encryptionAlgo {
-	case "3des":
-		alg = ipsecpolicies.EncryptionAlgorithm3DES
-	case "aes-128":
-		alg = ipsecpolicies.EncryptionAlgorithmAES128
-	case "aes-256":
-		alg = ipsecpolicies.EncryptionAlgorithmAES256
-	case "aes-192":
-		alg = ipsecpolicies.EncryptionAlgorithmAES192
+
+func resourceIPSecPolicyV2EncryptionAlgorithm(v any, k string) ([]string, []error) {
+	switch ipsecpolicies.EncryptionAlgorithm(v.(string)) {
+	case ipsecpolicies.EncryptionAlgorithm3DES,
+		ipsecpolicies.EncryptionAlgorithmAES128,
+		ipsecpolicies.EncryptionAlgorithmAES256,
+		ipsecpolicies.EncryptionAlgorithmAES192,
+		ipsecpolicies.EncryptionAlgorithmAES128CTR,
+		ipsecpolicies.EncryptionAlgorithmAES192CTR,
+		ipsecpolicies.EncryptionAlgorithmAES256CTR,
+		ipsecpolicies.EncryptionAlgorithmAES128CCM8,
+		ipsecpolicies.EncryptionAlgorithmAES192CCM8,
+		ipsecpolicies.EncryptionAlgorithmAES256CCM8,
+		ipsecpolicies.EncryptionAlgorithmAES128CCM12,
+		ipsecpolicies.EncryptionAlgorithmAES192CCM12,
+		ipsecpolicies.EncryptionAlgorithmAES256CCM12,
+		ipsecpolicies.EncryptionAlgorithmAES128CCM16,
+		ipsecpolicies.EncryptionAlgorithmAES192CCM16,
+		ipsecpolicies.EncryptionAlgorithmAES256CCM16,
+		ipsecpolicies.EncryptionAlgorithmAES128GCM8,
+		ipsecpolicies.EncryptionAlgorithmAES192GCM8,
+		ipsecpolicies.EncryptionAlgorithmAES256GCM8,
+		ipsecpolicies.EncryptionAlgorithmAES128GCM12,
+		ipsecpolicies.EncryptionAlgorithmAES192GCM12,
+		ipsecpolicies.EncryptionAlgorithmAES256GCM12,
+		ipsecpolicies.EncryptionAlgorithmAES128GCM16,
+		ipsecpolicies.EncryptionAlgorithmAES192GCM16,
+		ipsecpolicies.EncryptionAlgorithmAES256GCM16:
+		return nil, nil
 	}
-	return alg
+
+	return nil, []error{fmt.Errorf("unknown %q %s for openstack_vpnaas_ipsec_policy_v2", k, v)}
 }
-func resourceIPSecPolicyV2AuthAlgorithm(authAlgo string) ipsecpolicies.AuthAlgorithm {
-	var alg ipsecpolicies.AuthAlgorithm
-	switch authAlgo {
-	case "sha1":
-		alg = ipsecpolicies.AuthAlgorithmSHA1
-	case "sha256":
-		alg = ipsecpolicies.AuthAlgorithmSHA256
-	case "sha384":
-		alg = ipsecpolicies.AuthAlgorithmSHA384
-	case "sha512":
-		alg = ipsecpolicies.AuthAlgorithmSHA512
+
+func resourceIPSecPolicyV2AuthAlgorithm(v any, k string) ([]string, []error) {
+	switch ipsecpolicies.AuthAlgorithm(v.(string)) {
+	case ipsecpolicies.AuthAlgorithmSHA1,
+		ipsecpolicies.AuthAlgorithmSHA256,
+		ipsecpolicies.AuthAlgorithmSHA384,
+		ipsecpolicies.AuthAlgorithmSHA512,
+		ipsecpolicies.AuthAlgorithmAESXCBC,
+		ipsecpolicies.AuthAlgorithmAESCMAC:
+		return nil, nil
 	}
-	return alg
+
+	return nil, []error{fmt.Errorf("unknown %q %s for openstack_vpnaas_ipsec_policy_v2", k, v)}
 }
-func resourceIPSecPolicyV2EncapsulationMode(encMode string) ipsecpolicies.EncapsulationMode {
-	var mode ipsecpolicies.EncapsulationMode
-	switch encMode {
-	case "tunnel":
-		mode = ipsecpolicies.EncapsulationModeTunnel
-	case "transport":
-		mode = ipsecpolicies.EncapsulationModeTransport
+
+func resourceIPSecPolicyV2EncapsulationMode(v any, k string) ([]string, []error) {
+	switch ipsecpolicies.EncapsulationMode(v.(string)) {
+	case ipsecpolicies.EncapsulationModeTunnel,
+		ipsecpolicies.EncapsulationModeTransport:
+		return nil, nil
 	}
-	return mode
+
+	return nil, []error{fmt.Errorf("unknown %q %s for openstack_vpnaas_ipsec_policy_v2", k, v)}
 }
 
 func resourceIPSecPolicyV2LifetimeCreateOpts(d *schema.Set) ipsecpolicies.LifetimeCreateOpts {
@@ -415,23 +454,26 @@ func resourceIPSecPolicyV2LifetimeCreateOpts(d *schema.Set) ipsecpolicies.Lifeti
 
 	rawPairs := d.List()
 	for _, raw := range rawPairs {
-		rawMap := raw.(map[string]interface{})
+		rawMap := raw.(map[string]any)
 		lifetime.Units = resourceIPSecPolicyV2Unit(rawMap["units"].(string))
 
 		value := rawMap["value"].(int)
 		lifetime.Value = value
 	}
+
 	return lifetime
 }
 
 func resourceIPSecPolicyV2Unit(units string) ipsecpolicies.Unit {
 	var unit ipsecpolicies.Unit
+
 	switch units {
 	case "seconds":
 		unit = ipsecpolicies.UnitSeconds
 	case "kilobytes":
 		unit = ipsecpolicies.UnitKilobytes
 	}
+
 	return unit
 }
 
@@ -440,11 +482,12 @@ func resourceIPSecPolicyV2LifetimeUpdateOpts(d *schema.Set) ipsecpolicies.Lifeti
 
 	rawPairs := d.List()
 	for _, raw := range rawPairs {
-		rawMap := raw.(map[string]interface{})
+		rawMap := raw.(map[string]any)
 		lifetimeUpdateOpts.Units = resourceIPSecPolicyV2Unit(rawMap["units"].(string))
 
 		value := rawMap["value"].(int)
 		lifetimeUpdateOpts.Value = value
 	}
+
 	return lifetimeUpdateOpts
 }

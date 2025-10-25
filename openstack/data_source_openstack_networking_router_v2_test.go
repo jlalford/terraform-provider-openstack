@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccOpenStackNetworkingRouterV2DataSource_name(t *testing.T) {
@@ -49,7 +50,7 @@ func testAccCheckNetworkingRouterV2DataSourceID(n string) resource.TestCheckFunc
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Router data source ID not set")
+			return errors.New("Router data source ID not set")
 		}
 
 		return nil
@@ -73,7 +74,7 @@ func testAccOpenStackNetworkingRouterV2DataSourceName() string {
 %s
 
 data "openstack_networking_router_v2" "router" {
-  name           = "${openstack_networking_router_v2.router.name}"
+  name           = openstack_networking_router_v2.router.name
   description    = "description"
   admin_state_up = "true"
   tags = [

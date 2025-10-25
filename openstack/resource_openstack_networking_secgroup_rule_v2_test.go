@@ -1,20 +1,25 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/security/groups"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/security/rules"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/security/addressgroups"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/security/groups"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/security/rules"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccNetworkingV2SecGroupRule_basic(t *testing.T) {
 	var secgroup1 groups.SecGroup
+
 	var secgroup2 groups.SecGroup
+
 	var secgroupRule1 rules.SecGroupRule
+
 	var secgroupRule2 rules.SecGroupRule
 
 	resource.Test(t, resource.TestCase{
@@ -23,18 +28,18 @@ func TestAccNetworkingV2SecGroupRule_basic(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SecGroupRuleDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SecGroupRuleDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SecGroupRuleBasic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SecGroupExists(
+					testAccCheckNetworkingV2SecGroupExists(t.Context(),
 						"openstack_networking_secgroup_v2.secgroup_1", &secgroup1),
-					testAccCheckNetworkingV2SecGroupExists(
+					testAccCheckNetworkingV2SecGroupExists(t.Context(),
 						"openstack_networking_secgroup_v2.secgroup_2", &secgroup2),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_1", &secgroupRule1),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_2", &secgroupRule2),
 					resource.TestCheckResourceAttr(
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_1", "description", "secgroup_rule_1"),
@@ -48,6 +53,7 @@ func TestAccNetworkingV2SecGroupRule_basic(t *testing.T) {
 
 func TestAccNetworkingV2SecGroupRule_lowerCaseCIDR(t *testing.T) {
 	var secgroup1 groups.SecGroup
+
 	var secgroupRule1 rules.SecGroupRule
 
 	resource.Test(t, resource.TestCase{
@@ -56,14 +62,14 @@ func TestAccNetworkingV2SecGroupRule_lowerCaseCIDR(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SecGroupRuleDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SecGroupRuleDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SecGroupRuleLowerCaseCidr,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SecGroupExists(
+					testAccCheckNetworkingV2SecGroupExists(t.Context(),
 						"openstack_networking_secgroup_v2.secgroup_1", &secgroup1),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_1", &secgroupRule1),
 					resource.TestCheckResourceAttr(
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_1", "remote_ip_prefix", "2001:558:fc00::/39"),
@@ -75,6 +81,7 @@ func TestAccNetworkingV2SecGroupRule_lowerCaseCIDR(t *testing.T) {
 
 func TestAccNetworkingV2SecGroupRule_timeout(t *testing.T) {
 	var secgroup1 groups.SecGroup
+
 	var secgroup2 groups.SecGroup
 
 	resource.Test(t, resource.TestCase{
@@ -83,14 +90,14 @@ func TestAccNetworkingV2SecGroupRule_timeout(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SecGroupRuleDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SecGroupRuleDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SecGroupRuleTimeout,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SecGroupExists(
+					testAccCheckNetworkingV2SecGroupExists(t.Context(),
 						"openstack_networking_secgroup_v2.secgroup_1", &secgroup1),
-					testAccCheckNetworkingV2SecGroupExists(
+					testAccCheckNetworkingV2SecGroupExists(t.Context(),
 						"openstack_networking_secgroup_v2.secgroup_2", &secgroup2),
 				),
 			},
@@ -100,23 +107,41 @@ func TestAccNetworkingV2SecGroupRule_timeout(t *testing.T) {
 
 func TestAccNetworkingV2SecGroupRule_protocols(t *testing.T) {
 	var secgroup1 groups.SecGroup
+
 	var secgroupRuleAh rules.SecGroupRule
+
 	var secgroupRuleDccp rules.SecGroupRule
+
 	var secgroupRuleEgp rules.SecGroupRule
+
 	var secgroupRuleEsp rules.SecGroupRule
+
 	var secgroupRuleGre rules.SecGroupRule
+
 	var secgroupRuleIgmp rules.SecGroupRule
+
 	var secgroupRuleIPv6Encap rules.SecGroupRule
+
 	var secgroupRuleIPv6Frag rules.SecGroupRule
+
 	var secgroupRuleIPv6Icmp rules.SecGroupRule
+
 	var secgroupRuleIPv6Nonxt rules.SecGroupRule
+
 	var secgroupRuleIPv6Opts rules.SecGroupRule
+
 	var secgroupRuleIPv6Route rules.SecGroupRule
+
 	var secgroupRuleOspf rules.SecGroupRule
+
 	var secgroupRulePgm rules.SecGroupRule
+
 	var secgroupRuleRsvp rules.SecGroupRule
+
 	var secgroupRuleSctp rules.SecGroupRule
+
 	var secgroupRuleUdplite rules.SecGroupRule
+
 	var secgroupRuleVrrp rules.SecGroupRule
 
 	resource.Test(t, resource.TestCase{
@@ -125,48 +150,48 @@ func TestAccNetworkingV2SecGroupRule_protocols(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SecGroupRuleDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SecGroupRuleDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SecGroupRuleProtocols,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SecGroupExists(
+					testAccCheckNetworkingV2SecGroupExists(t.Context(),
 						"openstack_networking_secgroup_v2.secgroup_1", &secgroup1),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_ah", &secgroupRuleAh),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_dccp", &secgroupRuleDccp),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_egp", &secgroupRuleEgp),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_esp", &secgroupRuleEsp),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_gre", &secgroupRuleGre),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_igmp", &secgroupRuleIgmp),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_ipv6_encap", &secgroupRuleIPv6Encap),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_ipv6_frag", &secgroupRuleIPv6Frag),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_ipv6_icmp", &secgroupRuleIPv6Icmp),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_ipv6_nonxt", &secgroupRuleIPv6Nonxt),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_ipv6_opts", &secgroupRuleIPv6Opts),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_ipv6_route", &secgroupRuleIPv6Route),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_ospf", &secgroupRuleOspf),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_pgm", &secgroupRulePgm),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_rsvp", &secgroupRuleRsvp),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_sctp", &secgroupRuleSctp),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_udplite", &secgroupRuleUdplite),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_vrrp", &secgroupRuleVrrp),
 					resource.TestCheckResourceAttr(
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_ah", "protocol", "ah"),
@@ -212,6 +237,7 @@ func TestAccNetworkingV2SecGroupRule_protocols(t *testing.T) {
 
 func TestAccNetworkingV2SecGroupRule_numericProtocol(t *testing.T) {
 	var secgroup1 groups.SecGroup
+
 	var secgroupRule1 rules.SecGroupRule
 
 	resource.Test(t, resource.TestCase{
@@ -220,14 +246,14 @@ func TestAccNetworkingV2SecGroupRule_numericProtocol(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SecGroupRuleDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SecGroupRuleDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SecGroupRuleNumericProtocol,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SecGroupExists(
+					testAccCheckNetworkingV2SecGroupExists(t.Context(),
 						"openstack_networking_secgroup_v2.secgroup_1", &secgroup1),
-					testAccCheckNetworkingV2SecGroupRuleExists(
+					testAccCheckNetworkingV2SecGroupRuleExists(t.Context(),
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_1", &secgroupRule1),
 					resource.TestCheckResourceAttr(
 						"openstack_networking_secgroup_rule_v2.secgroup_rule_1", "protocol", "6"),
@@ -237,28 +263,54 @@ func TestAccNetworkingV2SecGroupRule_numericProtocol(t *testing.T) {
 	})
 }
 
-func testAccCheckNetworkingV2SecGroupRuleDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	networkingClient, err := config.NetworkingV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack networking client: %s", err)
-	}
+func TestAccNetworkingV2SecGroupRule_addressgroup(t *testing.T) {
+	var addressGroup addressgroups.AddressGroup
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_networking_secgroup_rule_v2" {
-			continue
-		}
-
-		_, err := rules.Get(networkingClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("Security group rule still exists")
-		}
-	}
-
-	return nil
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckNonAdminOnly(t)
+		},
+		ProviderFactories: testAccProviders,
+		CheckDestroy:      testAccCheckNetworkingV2SecGroupRuleDestroy(t.Context()),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccNetworkingV2SecGroupRuleAddressGroup,
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckNetworkingV2AddressGroupExists(t.Context(), "openstack_networking_address_group_v2.group_1", &addressGroup),
+					resource.TestCheckResourceAttrPtr(
+						"openstack_networking_secgroup_rule_v2.secgroup_rule_1", "remote_address_group_id", &addressGroup.ID),
+				),
+			},
+		},
+	})
 }
 
-func testAccCheckNetworkingV2SecGroupRuleExists(n string, securityGroupRule *rules.SecGroupRule) resource.TestCheckFunc {
+func testAccCheckNetworkingV2SecGroupRuleDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
+
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
+		}
+
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_networking_secgroup_rule_v2" {
+				continue
+			}
+
+			_, err := rules.Get(ctx, networkingClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return errors.New("Security group rule still exists")
+			}
+		}
+
+		return nil
+	}
+}
+
+func testAccCheckNetworkingV2SecGroupRuleExists(ctx context.Context, n string, securityGroupRule *rules.SecGroupRule) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -266,22 +318,23 @@ func testAccCheckNetworkingV2SecGroupRuleExists(n string, securityGroupRule *rul
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		networkingClient, err := config.NetworkingV2Client(osRegionName)
+
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack networking client: %s", err)
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
 		}
 
-		found, err := rules.Get(networkingClient, rs.Primary.ID).Extract()
+		found, err := rules.Get(ctx, networkingClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Security group rule not found")
+			return errors.New("Security group rule not found")
 		}
 
 		*securityGroupRule = *found
@@ -308,7 +361,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_1" {
   port_range_min = 22
   protocol = "tcp"
   remote_ip_prefix = "0.0.0.0/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 	description = "secgroup_rule_1"
 }
 
@@ -318,8 +371,8 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_2" {
   port_range_max = 80
   port_range_min = 80
   protocol = "tcp"
-  remote_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_2.id}"
+  remote_group_id = openstack_networking_secgroup_v2.secgroup_1.id
+  security_group_id = openstack_networking_secgroup_v2.secgroup_2.id
 }
 `
 
@@ -336,7 +389,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_1" {
   port_range_min = 22
   protocol = "tcp"
   remote_ip_prefix = "2001:558:FC00::/39"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 `
 
@@ -358,7 +411,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_1" {
   port_range_min = 22
   protocol = "tcp"
   remote_ip_prefix = "0.0.0.0/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 
   timeouts {
     delete = "5m"
@@ -371,8 +424,8 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_2" {
   port_range_max = 80
   port_range_min = 80
   protocol = "tcp"
-  remote_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_2.id}"
+  remote_group_id = openstack_networking_secgroup_v2.secgroup_1.id
+  security_group_id = openstack_networking_secgroup_v2.secgroup_2.id
 
   timeouts {
     delete = "5m"
@@ -391,7 +444,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_ah" {
   ethertype = "IPv4"
   protocol = "ah"
   remote_ip_prefix = "0.0.0.0/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 
 resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_dccp" {
@@ -399,7 +452,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_dccp" {
   ethertype = "IPv4"
   protocol = "dccp"
   remote_ip_prefix = "0.0.0.0/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 
 resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_egp" {
@@ -407,7 +460,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_egp" {
   ethertype = "IPv4"
   protocol = "egp"
   remote_ip_prefix = "0.0.0.0/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 
 resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_esp" {
@@ -415,7 +468,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_esp" {
   ethertype = "IPv4"
   protocol = "esp"
   remote_ip_prefix = "0.0.0.0/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 
 resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_gre" {
@@ -423,7 +476,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_gre" {
   ethertype = "IPv4"
   protocol = "gre"
   remote_ip_prefix = "0.0.0.0/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 
 resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_igmp" {
@@ -431,7 +484,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_igmp" {
   ethertype = "IPv4"
   protocol = "igmp"
   remote_ip_prefix = "0.0.0.0/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 
 resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_ipv6_encap" {
@@ -439,7 +492,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_ipv6_encap" {
   ethertype = "IPv6"
   protocol = "ipv6-encap"
   remote_ip_prefix = "::/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 
 resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_ipv6_frag" {
@@ -447,7 +500,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_ipv6_frag" {
   ethertype = "IPv6"
   protocol = "ipv6-frag"
   remote_ip_prefix = "::/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 
 resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_ipv6_icmp" {
@@ -455,7 +508,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_ipv6_icmp" {
   ethertype = "IPv6"
   protocol = "ipv6-icmp"
   remote_ip_prefix = "::/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 
 resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_ipv6_nonxt" {
@@ -463,7 +516,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_ipv6_nonxt" {
   ethertype = "IPv6"
   protocol = "ipv6-nonxt"
   remote_ip_prefix = "::/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 
 resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_ipv6_opts" {
@@ -471,7 +524,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_ipv6_opts" {
   ethertype = "IPv6"
   protocol = "ipv6-opts"
   remote_ip_prefix = "::/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 
 resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_ipv6_route" {
@@ -479,7 +532,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_ipv6_route" {
   ethertype = "IPv6"
   protocol = "ipv6-route"
   remote_ip_prefix = "::/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 
 resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_ospf" {
@@ -487,7 +540,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_ospf" {
   ethertype = "IPv4"
   protocol = "ospf"
   remote_ip_prefix = "0.0.0.0/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 
 resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_pgm" {
@@ -495,7 +548,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_pgm" {
   ethertype = "IPv4"
   protocol = "pgm"
   remote_ip_prefix = "0.0.0.0/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 
 resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_rsvp" {
@@ -503,7 +556,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_rsvp" {
   ethertype = "IPv4"
   protocol = "rsvp"
   remote_ip_prefix = "0.0.0.0/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 
 resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_sctp" {
@@ -511,7 +564,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_sctp" {
   ethertype = "IPv4"
   protocol = "sctp"
   remote_ip_prefix = "0.0.0.0/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 
 resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_udplite" {
@@ -519,7 +572,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_udplite" {
   ethertype = "IPv4"
   protocol = "udplite"
   remote_ip_prefix = "0.0.0.0/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 
 resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_vrrp" {
@@ -527,7 +580,7 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_vrrp" {
   ethertype = "IPv4"
   protocol = "vrrp"
   remote_ip_prefix = "0.0.0.0/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 `
 
@@ -544,6 +597,32 @@ resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_1" {
   port_range_min = 22
   protocol = "6"
   remote_ip_prefix = "0.0.0.0/0"
-  security_group_id = "${openstack_networking_secgroup_v2.secgroup_1.id}"
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
+}
+`
+
+const testAccNetworkingV2SecGroupRuleAddressGroup = `
+resource "openstack_networking_secgroup_v2" "secgroup_1" {
+  name = "secgroup_1"
+  description = "terraform security group rule acceptance test"
+}
+
+resource "openstack_networking_address_group_v2" "group_1" {
+  name = "group_1"
+  description = "terraform security group address group acceptance test"
+  addresses = [
+    "192.168.0.1/32",
+    "2001:db8::/32",
+  ]
+}
+
+resource "openstack_networking_secgroup_rule_v2" "secgroup_rule_1" {
+  direction = "ingress"
+  ethertype = "IPv4"
+  port_range_max = 22
+  port_range_min = 22
+  protocol = "tcp"
+  remote_address_group_id = openstack_networking_address_group_v2.group_1.id
+  security_group_id = openstack_networking_secgroup_v2.secgroup_1.id
 }
 `

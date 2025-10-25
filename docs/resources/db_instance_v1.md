@@ -41,8 +41,8 @@ resource "openstack_db_instance_v1" "test" {
 
 The following arguments are supported:
 
-* `region` - (Required) The region in which to create the db instance. Changing this
-    creates a new instance.
+* `region` - (Optional) The region in which to create the db instance. Changing this
+  creates a new instance.
 
 * `name` - (Required) A unique name for the resource.
 
@@ -53,6 +53,10 @@ The following arguments are supported:
    will be rebooted when configuration is detached.
 
 * `size` - (Required) Specifies the volume size in GB. Changing this creates new instance.
+
+* `volume_type` - (Optional) Specifies the volume type to use. If you want to
+  specify a volume type, you must also specify a volume size. Changing this
+  creates new instance.
 
 * `datastore` - (Required) An array of database engine type and version. The datastore
     object structure is documented below. Changing this creates a new instance.
@@ -119,6 +123,7 @@ The following attributes are exported:
 * `region` - See Argument Reference above.
 * `name` - See Argument Reference above.
 * `size` - See Argument Reference above.
+* `volume_type` - See Argument Reference above.
 * `flavor_id` - See Argument Reference above.
 * `configuration_id` - See Argument Reference above.
 * `datastore/type` - See Argument Reference above.

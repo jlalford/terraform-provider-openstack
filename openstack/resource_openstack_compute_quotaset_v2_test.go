@@ -1,15 +1,16 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/quotasets"
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/projects"
+	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/quotasets"
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/projects"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccComputeQuotasetV2_basic(t *testing.T) {
@@ -24,13 +25,13 @@ func TestAccComputeQuotasetV2_basic(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIdentityV3ProjectDestroy,
+		CheckDestroy:      testAccCheckIdentityV3ProjectDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccComputeQuotasetV2Basic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3ProjectExists("openstack_identity_project_v3.project_1", &project),
-					testAccCheckComputeQuotasetV2Exists("openstack_compute_quotaset_v2.quotaset_1", &quotaset),
+					testAccCheckIdentityV3ProjectExists(t.Context(), "openstack_identity_project_v3.project_1", &project),
+					testAccCheckComputeQuotasetV2Exists(t.Context(), "openstack_compute_quotaset_v2.quotaset_1", &quotaset),
 					resource.TestCheckResourceAttr(
 						"openstack_compute_quotaset_v2.quotaset_1", "fixed_ips", "2"),
 					resource.TestCheckResourceAttr(
@@ -64,8 +65,8 @@ func TestAccComputeQuotasetV2_basic(t *testing.T) {
 			{
 				Config: testAccComputeQuotasetV2Update1,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3ProjectExists("openstack_identity_project_v3.project_1", &project),
-					testAccCheckComputeQuotasetV2Exists("openstack_compute_quotaset_v2.quotaset_1", &quotaset),
+					testAccCheckIdentityV3ProjectExists(t.Context(), "openstack_identity_project_v3.project_1", &project),
+					testAccCheckComputeQuotasetV2Exists(t.Context(), "openstack_compute_quotaset_v2.quotaset_1", &quotaset),
 					resource.TestCheckResourceAttr(
 						"openstack_compute_quotaset_v2.quotaset_1", "fixed_ips", "4"),
 					resource.TestCheckResourceAttr(
@@ -99,8 +100,8 @@ func TestAccComputeQuotasetV2_basic(t *testing.T) {
 			{
 				Config: testAccComputeQuotasetV2Update2,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3ProjectExists("openstack_identity_project_v3.project_1", &project),
-					testAccCheckComputeQuotasetV2Exists("openstack_compute_quotaset_v2.quotaset_1", &quotaset),
+					testAccCheckIdentityV3ProjectExists(t.Context(), "openstack_identity_project_v3.project_1", &project),
+					testAccCheckComputeQuotasetV2Exists(t.Context(), "openstack_compute_quotaset_v2.quotaset_1", &quotaset),
 					resource.TestCheckResourceAttr(
 						"openstack_compute_quotaset_v2.quotaset_1", "fixed_ips", "5"),
 					resource.TestCheckResourceAttr(
@@ -135,7 +136,7 @@ func TestAccComputeQuotasetV2_basic(t *testing.T) {
 	})
 }
 
-func testAccCheckComputeQuotasetV2Exists(n string, quotaset *quotasets.QuotaSet) resource.TestCheckFunc {
+func testAccCheckComputeQuotasetV2Exists(ctx context.Context, n string, quotaset *quotasets.QuotaSet) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -143,24 +144,25 @@ func testAccCheckComputeQuotasetV2Exists(n string, quotaset *quotasets.QuotaSet)
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		computeClient, err := config.ComputeV2Client(osRegionName)
+
+		computeClient, err := config.ComputeV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack compute client: %s", err)
+			return fmt.Errorf("Error creating OpenStack compute client: %w", err)
 		}
 
 		projectID := strings.Split(rs.Primary.ID, "/")[0]
 
-		found, err := quotasets.Get(computeClient, projectID).Extract()
+		found, err := quotasets.Get(ctx, computeClient, projectID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != projectID {
-			return fmt.Errorf("Quotaset not found")
+			return errors.New("Quotaset not found")
 		}
 
 		*quotaset = *found
@@ -175,7 +177,7 @@ resource "openstack_identity_project_v3" "project_1" {
 }
 
 resource "openstack_compute_quotaset_v2" "quotaset_1" {
-  project_id                  = "${openstack_identity_project_v3.project_1.id}"
+  project_id                  = openstack_identity_project_v3.project_1.id
   fixed_ips                   = 2
   floating_ips                = 2
   injected_file_content_bytes = 2
@@ -199,7 +201,7 @@ resource "openstack_identity_project_v3" "project_1" {
 }
 
 resource "openstack_compute_quotaset_v2" "quotaset_1" {
-  project_id           = "${openstack_identity_project_v3.project_1.id}"
+  project_id           = openstack_identity_project_v3.project_1.id
   fixed_ips                   = 4
   floating_ips                = 4
   injected_file_content_bytes = 4
@@ -223,7 +225,7 @@ resource "openstack_identity_project_v3" "project_1" {
 }
 
 resource "openstack_compute_quotaset_v2" "quotaset_1" {
-  project_id           = "${openstack_identity_project_v3.project_1.id}"
+  project_id           = openstack_identity_project_v3.project_1.id
   fixed_ips                   = 5
   floating_ips                = 5
   injected_file_content_bytes = 5

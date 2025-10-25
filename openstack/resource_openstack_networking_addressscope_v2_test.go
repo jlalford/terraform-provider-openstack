@@ -1,14 +1,15 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/addressscopes"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/layer3/addressscopes"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccNetworkingV2AddressScope_basic(t *testing.T) {
@@ -23,12 +24,12 @@ func TestAccNetworkingV2AddressScope_basic(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2AddressScopeDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2AddressScopeDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2AddressScopeBasic(name),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2AddressScopeExists("openstack_networking_addressscope_v2.addressscope_1", &addressScope),
+					testAccCheckNetworkingV2AddressScopeExists(t.Context(), "openstack_networking_addressscope_v2.addressscope_1", &addressScope),
 					resource.TestCheckResourceAttr("openstack_networking_addressscope_v2.addressscope_1", "name", name),
 					resource.TestCheckResourceAttr("openstack_networking_addressscope_v2.addressscope_1", "ip_version", "4"),
 					resource.TestCheckResourceAttr("openstack_networking_addressscope_v2.addressscope_1", "shared", "false"),
@@ -46,7 +47,7 @@ func TestAccNetworkingV2AddressScope_basic(t *testing.T) {
 	})
 }
 
-func testAccCheckNetworkingV2AddressScopeExists(n string, addressScope *addressscopes.AddressScope) resource.TestCheckFunc {
+func testAccCheckNetworkingV2AddressScopeExists(ctx context.Context, n string, addressScope *addressscopes.AddressScope) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -54,22 +55,23 @@ func testAccCheckNetworkingV2AddressScopeExists(n string, addressScope *addresss
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		networkingClient, err := config.NetworkingV2Client(osRegionName)
+
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack networking client: %s", err)
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
 		}
 
-		found, err := addressscopes.Get(networkingClient, rs.Primary.ID).Extract()
+		found, err := addressscopes.Get(ctx, networkingClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Address-scope not found")
+			return errors.New("Address-scope not found")
 		}
 
 		*addressScope = *found
@@ -78,25 +80,28 @@ func testAccCheckNetworkingV2AddressScopeExists(n string, addressScope *addresss
 	}
 }
 
-func testAccCheckNetworkingV2AddressScopeDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	networkingClient, err := config.NetworkingV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack networking client: %s", err)
-	}
+func testAccCheckNetworkingV2AddressScopeDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_networking_addressscope_v2" {
-			continue
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
 		}
 
-		_, err := addressscopes.Get(networkingClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("Address-scope still exists")
-		}
-	}
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_networking_addressscope_v2" {
+				continue
+			}
 
-	return nil
+			_, err := addressscopes.Get(ctx, networkingClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return errors.New("Address-scope still exists")
+			}
+		}
+
+		return nil
+	}
 }
 
 func testAccNetworkingV2AddressScopeBasic(name string) string {

@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccComputeV2QuotasetDataSource(t *testing.T) {
@@ -44,7 +45,7 @@ func testAccCheckComputeQuotasetV2DataSourceID(n string) resource.TestCheckFunc 
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Compute quotaset data source ID not set")
+			return errors.New("Compute quotaset data source ID not set")
 		}
 
 		return nil
@@ -62,7 +63,7 @@ func testAccComputeV2QuotasetDataSourceSource() string {
 %s
 
 data "openstack_compute_quotaset_v2" "source" {
-  project_id = "${openstack_identity_project_v3.project.id}"
+  project_id = openstack_identity_project_v3.project.id
 }
 `, testAccComputeV2QuotasetDataSourceBasic)
 }

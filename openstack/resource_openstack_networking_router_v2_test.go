@@ -1,13 +1,15 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/routers"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/layer3/routers"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/qos/policies"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccNetworkingV2Router_basic(t *testing.T) {
@@ -19,12 +21,12 @@ func TestAccNetworkingV2Router_basic(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2RouterDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2RouterDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2RouterBasic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2RouterExists("openstack_networking_router_v2.router_1", &router),
+					testAccCheckNetworkingV2RouterExists(t.Context(), "openstack_networking_router_v2.router_1", &router),
 					resource.TestCheckResourceAttr(
 						"openstack_networking_router_v2.router_1", "description", "router description"),
 				),
@@ -51,12 +53,12 @@ func TestAccNetworkingV2Router_updateExternalGateway(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2RouterDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2RouterDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2RouterUpdateExternalGateway1,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2RouterExists("openstack_networking_router_v2.router_1", &router),
+					testAccCheckNetworkingV2RouterExists(t.Context(), "openstack_networking_router_v2.router_1", &router),
 				),
 			},
 			{
@@ -79,12 +81,12 @@ func TestAccNetworkingV2Router_vendor_opts(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2RouterDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2RouterDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2RouterVendorOpts(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2RouterExists("openstack_networking_router_v2.router_1", &router),
+					testAccCheckNetworkingV2RouterExists(t.Context(), "openstack_networking_router_v2.router_1", &router),
 					resource.TestCheckResourceAttr(
 						"openstack_networking_router_v2.router_1", "external_network_id", osExtGwID),
 				),
@@ -104,12 +106,12 @@ func TestAccNetworkingV2Router_vendor_opts_no_snat(t *testing.T) {
 			t.Skip("Currently failing in GH-A: Cannot enable DVR + OVN on devstack")
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2RouterDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2RouterDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2RouterVendorOptsNoSnat(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2RouterExists("openstack_networking_router_v2.router_1", &router),
+					testAccCheckNetworkingV2RouterExists(t.Context(), "openstack_networking_router_v2.router_1", &router),
 					resource.TestCheckResourceAttr(
 						"openstack_networking_router_v2.router_1", "external_network_id", osExtGwID),
 				),
@@ -125,7 +127,7 @@ func TestAccNetworkingV2Router_extFixedIPs(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2RouterDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2RouterDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2RouterExtFixedIPs(),
@@ -149,7 +151,7 @@ func TestAccNetworkingV2Router_extSubnetIDs(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2RouterDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2RouterDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2RouterExtSubnetIDs(),
@@ -166,28 +168,83 @@ func TestAccNetworkingV2Router_extSubnetIDs(t *testing.T) {
 	})
 }
 
-func testAccCheckNetworkingV2RouterDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	networkingClient, err := config.NetworkingV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack networking client: %s", err)
-	}
+func TestAccNetworkingV2Router_extQoSPolicy(t *testing.T) {
+	var policy policies.Policy
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_networking_router_v2" {
-			continue
-		}
-
-		_, err := routers.Get(networkingClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("Router still exists")
-		}
-	}
-
-	return nil
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckAdminOnly(t)
+		},
+		ProviderFactories: testAccProviders,
+		CheckDestroy:      testAccCheckNetworkingV2RouterDestroy(t.Context()),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccNetworkingV2RouterExtQoSPolicy(),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckNetworkingV2QoSPolicyExists(t.Context(),
+						"openstack_networking_qos_policy_v2.qos_policy_1", &policy),
+					resource.TestCheckResourceAttr(
+						"openstack_networking_router_v2.router_1", "name", "router_1"),
+					resource.TestCheckResourceAttr(
+						"openstack_networking_router_v2.router_1", "external_fixed_ip.#", "2"),
+					resource.TestCheckResourceAttr(
+						"openstack_networking_router_v2.router_1", "enable_snat", "true"),
+					resource.TestCheckResourceAttrPtr(
+						"openstack_networking_router_v2.router_1", "external_qos_policy_id", &policy.ID),
+				),
+			},
+		},
+	})
 }
 
-func testAccCheckNetworkingV2RouterExists(n string, router *routers.Router) resource.TestCheckFunc {
+func TestAccNetworkingV2Router_extIPAddress(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckAdminOnly(t)
+		},
+		ProviderFactories: testAccProviders,
+		CheckDestroy:      testAccCheckNetworkingV2RouterDestroy(t.Context()),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccNetworkingV2RouterExtIPAddress(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"openstack_networking_router_v2.router_1", "name", "router_1"),
+					resource.TestCheckResourceAttr(
+						"openstack_networking_router_v2.router_1", "external_fixed_ip.#", "1"),
+				),
+			},
+		},
+	})
+}
+
+func testAccCheckNetworkingV2RouterDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
+
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
+		}
+
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_networking_router_v2" {
+				continue
+			}
+
+			_, err := routers.Get(ctx, networkingClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return errors.New("Router still exists")
+			}
+		}
+
+		return nil
+	}
+}
+
+func testAccCheckNetworkingV2RouterExists(ctx context.Context, n string, router *routers.Router) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -195,22 +252,23 @@ func testAccCheckNetworkingV2RouterExists(n string, router *routers.Router) reso
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		networkingClient, err := config.NetworkingV2Client(osRegionName)
+
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack networking client: %s", err)
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
 		}
 
-		found, err := routers.Get(networkingClient, rs.Primary.ID).Extract()
+		found, err := routers.Get(ctx, networkingClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Router not found")
+			return errors.New("Router not found")
 		}
 
 		*router = *found
@@ -308,11 +366,11 @@ resource "openstack_networking_router_v2" "router_2" {
   external_network_id = "%s"
 
   external_fixed_ip {
-    subnet_id = "${openstack_networking_router_v2.router_1.external_fixed_ip.0.subnet_id}"
+    subnet_id = openstack_networking_router_v2.router_1.external_fixed_ip.0.subnet_id
   }
 
   external_fixed_ip {
-    subnet_id = "${openstack_networking_router_v2.router_1.external_fixed_ip.0.subnet_id}"
+    subnet_id = openstack_networking_router_v2.router_1.external_fixed_ip.0.subnet_id
   }
 
   timeouts {
@@ -343,7 +401,7 @@ resource "openstack_networking_router_v2" "router_2" {
 
   external_subnet_ids = [
     "%s", # wrong UUID
-    "${openstack_networking_router_v2.router_1.external_fixed_ip.0.subnet_id}",
+    openstack_networking_router_v2.router_1.external_fixed_ip.0.subnet_id,
     "%s", # wrong UUID again
   ]
 
@@ -353,4 +411,48 @@ resource "openstack_networking_router_v2" "router_2" {
   }
 }
 `, osExtGwID, osExtGwID, osExtGwID, osExtGwID)
+}
+
+func testAccNetworkingV2RouterExtQoSPolicy() string {
+	return fmt.Sprintf(`
+resource "openstack_networking_qos_policy_v2" "qos_policy_1" {
+  name = "qos_policy_1"
+}
+
+resource "openstack_networking_router_v2" "router_1" {
+  name = "router_1"
+  admin_state_up = "true"
+  external_network_id = "%s"
+  external_qos_policy_id = openstack_networking_qos_policy_v2.qos_policy_1.id
+
+  timeouts {
+    create = "5m"
+    delete = "5m"
+  }
+}
+`, osExtGwID)
+}
+
+func testAccNetworkingV2RouterExtIPAddress() string {
+	return fmt.Sprintf(`
+data "openstack_networking_subnet_v2" "subnet_1" {
+  name = "public-subnet"
+  network_id = "%s"
+}
+
+resource "openstack_networking_router_v2" "router_1" {
+  name = "router_1"
+  admin_state_up = "true"
+  external_network_id = "%s"
+
+  external_fixed_ip {
+    ip_address = cidrhost(format("%%s/24", data.openstack_networking_subnet_v2.subnet_1.allocation_pools.0.end),-5)
+  }
+
+  timeouts {
+    create = "5m"
+    delete = "5m"
+  }
+}
+`, osExtGwID, osExtGwID)
 }

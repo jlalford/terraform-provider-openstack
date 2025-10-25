@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccSFSV2ShareDataSource_basic(t *testing.T) {
@@ -16,7 +17,7 @@ func TestAccSFSV2ShareDataSource_basic(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckSFSV2ShareDestroy,
+		CheckDestroy:      testAccCheckSFSV2ShareDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccSFSV2ShareDataSourceBasic,
@@ -46,7 +47,7 @@ func testAccCheckSFSV2ShareDataSourceID(n string) resource.TestCheckFunc {
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Share data source ID not set")
+			return errors.New("Share data source ID not set")
 		}
 
 		return nil
@@ -63,7 +64,7 @@ resource "openstack_sharedfilesystem_share_v2" "share_1" {
 }
 
 data "openstack_sharedfilesystem_share_v2" "share_1" {
-  name        = "${openstack_sharedfilesystem_share_v2.share_1.name}"
-  description = "${openstack_sharedfilesystem_share_v2.share_1.description}"
+  name        = openstack_sharedfilesystem_share_v2.share_1.name
+  description = openstack_sharedfilesystem_share_v2.share_1.description
 }
 `

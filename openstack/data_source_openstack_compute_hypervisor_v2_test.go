@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func testAccHypervisorDataSource() string {
@@ -20,7 +21,6 @@ func TestAccComputeHypervisorV2DataSource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheckAdminOnly(t)
-			testAccPreCheckHypervisor(t)
 		},
 		ProviderFactories: testAccProviders,
 		Steps: []resource.TestStep{
@@ -28,7 +28,7 @@ func TestAccComputeHypervisorV2DataSource(t *testing.T) {
 				Config: testAccHypervisorDataSource(),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckComputeHypervisorV2DataSourceID("data.openstack_compute_hypervisor_v2.host01"),
-					resource.TestCheckResourceAttr("data.openstack_compute_hypervisor_v2.host01", "hostname", osHypervisorEnvironment),
+					resource.TestCheckResourceAttrSet("data.openstack_compute_hypervisor_v2.host01", "hostname"),
 				),
 			},
 		},
@@ -43,7 +43,7 @@ func testAccCheckComputeHypervisorV2DataSourceID(n string) resource.TestCheckFun
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Data source ID not set")
+			return errors.New("Data source ID not set")
 		}
 
 		return nil

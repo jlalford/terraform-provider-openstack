@@ -3,7 +3,7 @@ package openstack
 import (
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestAccNetworkingV2Network_importBasic(t *testing.T) {
@@ -15,7 +15,7 @@ func TestAccNetworkingV2Network_importBasic(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2NetworkDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2NetworkDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2NetworkBasic,
@@ -39,7 +39,7 @@ func TestAccNetworkingV2Network_importSegments(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2NetworkDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2NetworkDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2NetworkMultipleSegmentMappings,

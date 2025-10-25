@@ -1,18 +1,20 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/db/v1/configurations"
-	"github.com/gophercloud/gophercloud/openstack/db/v1/instances"
+	"github.com/gophercloud/gophercloud/v2/openstack/db/v1/configurations"
+	"github.com/gophercloud/gophercloud/v2/openstack/db/v1/instances"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccDatabaseV1Instance_basic(t *testing.T) {
 	var instance instances.Instance
+
 	var configuration configurations.Config
 
 	resource.Test(t, resource.TestCase{
@@ -22,15 +24,17 @@ func TestAccDatabaseV1Instance_basic(t *testing.T) {
 			testAccPreCheckDatabase(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckDatabaseV1InstanceDestroy,
+		CheckDestroy:      testAccCheckDatabaseV1InstanceDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccDatabaseV1InstanceBasic(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckDatabaseV1InstanceExists(
+					testAccCheckDatabaseV1InstanceExists(t.Context(),
 						"openstack_db_instance_v1.basic", &instance),
 					resource.TestCheckResourceAttrPtr(
 						"openstack_db_instance_v1.basic", "name", &instance.Name),
+					resource.TestCheckResourceAttr(
+						"openstack_db_instance_v1.basic", "volume_type", "lvmdriver-1"),
 					resource.TestCheckResourceAttr(
 						"openstack_db_instance_v1.basic", "user.0.name", "testuser"),
 					resource.TestCheckResourceAttr(
@@ -49,7 +53,7 @@ func TestAccDatabaseV1Instance_basic(t *testing.T) {
 						"openstack_db_instance_v1.basic", "database.1.collate", "utf8_general_ci"),
 					resource.TestCheckResourceAttrSet(
 						"openstack_db_instance_v1.basic", "configuration_id"),
-					testAccCheckDatabaseV1ConfigurationExists(
+					testAccCheckDatabaseV1ConfigurationExists(t.Context(),
 						"openstack_db_configuration_v1.basic", &configuration),
 				),
 			},
@@ -57,7 +61,7 @@ func TestAccDatabaseV1Instance_basic(t *testing.T) {
 	})
 }
 
-func testAccCheckDatabaseV1InstanceExists(n string, instance *instances.Instance) resource.TestCheckFunc {
+func testAccCheckDatabaseV1InstanceExists(ctx context.Context, n string, instance *instances.Instance) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -65,22 +69,23 @@ func testAccCheckDatabaseV1InstanceExists(n string, instance *instances.Instance
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		DatabaseV1Client, err := config.DatabaseV1Client(osRegionName)
+
+		databaseV1Client, err := config.DatabaseV1Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack compute client: %s", err)
+			return fmt.Errorf("Error creating OpenStack compute client: %w", err)
 		}
 
-		found, err := instances.Get(DatabaseV1Client, rs.Primary.ID).Extract()
+		found, err := instances.Get(ctx, databaseV1Client, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Instance not found")
+			return errors.New("Instance not found")
 		}
 
 		*instance = *found
@@ -89,33 +94,35 @@ func testAccCheckDatabaseV1InstanceExists(n string, instance *instances.Instance
 	}
 }
 
-func testAccCheckDatabaseV1InstanceDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
+func testAccCheckDatabaseV1InstanceDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	DatabaseV1Client, err := config.DatabaseV1Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack compute client: %s", err)
-	}
-
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_db_instance_v1" {
-			continue
+		databaseV1Client, err := config.DatabaseV1Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack compute client: %w", err)
 		}
 
-		_, err := instances.Get(DatabaseV1Client, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("Instance still exists")
-		}
-	}
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_db_instance_v1" {
+				continue
+			}
 
-	return nil
+			_, err := instances.Get(ctx, databaseV1Client, rs.Primary.ID).Extract()
+			if err == nil {
+				return errors.New("Instance still exists")
+			}
+		}
+
+		return nil
+	}
 }
 
 func testAccDatabaseV1InstanceBasic() string {
 	return fmt.Sprintf(`
 resource "openstack_db_instance_v1" "basic" {
   name             = "basic"
-  configuration_id = "${openstack_db_configuration_v1.basic.id}"
+  configuration_id = openstack_db_configuration_v1.basic.id
 
   datastore {
     version = "%[1]s"
@@ -127,6 +134,7 @@ resource "openstack_db_instance_v1" "basic" {
   }
 
   size = 10
+  volume_type = "lvmdriver-1"
 
   database {
     name    = "testdb1"

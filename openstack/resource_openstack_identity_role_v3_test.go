@@ -1,29 +1,31 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/roles"
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/roles"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccIdentityV3Role_basic(t *testing.T) {
 	var role roles.Role
+
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIdentityV3RoleDestroy,
+		CheckDestroy:      testAccCheckIdentityV3RoleDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIdentityV3RoleBasic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3RoleExists("openstack_identity_role_v3.role_1", &role),
+					testAccCheckIdentityV3RoleExists(t.Context(), "openstack_identity_role_v3.role_1", &role),
 					resource.TestCheckResourceAttrPtr(
 						"openstack_identity_role_v3.role_1", "name", &role.Name),
 				),
@@ -31,7 +33,7 @@ func TestAccIdentityV3Role_basic(t *testing.T) {
 			{
 				Config: testAccIdentityV3RoleUpdate,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3RoleExists("openstack_identity_role_v3.role_1", &role),
+					testAccCheckIdentityV3RoleExists(t.Context(), "openstack_identity_role_v3.role_1", &role),
 					resource.TestCheckResourceAttrPtr(
 						"openstack_identity_role_v3.role_1", "name", &role.Name),
 				),
@@ -40,28 +42,31 @@ func TestAccIdentityV3Role_basic(t *testing.T) {
 	})
 }
 
-func testAccCheckIdentityV3RoleDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	identityClient, err := config.IdentityV3Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack identity client: %s", err)
-	}
+func testAccCheckIdentityV3RoleDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_identity_role_v3" {
-			continue
+		identityClient, err := config.IdentityV3Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack identity client: %w", err)
 		}
 
-		_, err := roles.Get(identityClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("Role still exists")
-		}
-	}
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_identity_role_v3" {
+				continue
+			}
 
-	return nil
+			_, err := roles.Get(ctx, identityClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return errors.New("Role still exists")
+			}
+		}
+
+		return nil
+	}
 }
 
-func testAccCheckIdentityV3RoleExists(n string, role *roles.Role) resource.TestCheckFunc {
+func testAccCheckIdentityV3RoleExists(ctx context.Context, n string, role *roles.Role) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -69,22 +74,23 @@ func testAccCheckIdentityV3RoleExists(n string, role *roles.Role) resource.TestC
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		identityClient, err := config.IdentityV3Client(osRegionName)
+
+		identityClient, err := config.IdentityV3Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack identity client: %s", err)
+			return fmt.Errorf("Error creating OpenStack identity client: %w", err)
 		}
 
-		found, err := roles.Get(identityClient, rs.Primary.ID).Extract()
+		found, err := roles.Get(ctx, identityClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Role not found")
+			return errors.New("Role not found")
 		}
 
 		*role = *found

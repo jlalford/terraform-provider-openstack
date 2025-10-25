@@ -3,7 +3,7 @@ package openstack
 import (
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestAccLBV2L7Policy_importBasic(t *testing.T) {
@@ -16,7 +16,7 @@ func TestAccLBV2L7Policy_importBasic(t *testing.T) {
 			testAccPreCheckLB(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckLBV2L7PolicyDestroy,
+		CheckDestroy:      testAccCheckLBV2L7PolicyDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccCheckLbV2L7PolicyConfigBasic(),

@@ -52,7 +52,11 @@ The following arguments are supported:
 * `ethertype` - (Required) The layer 3 protocol type, valid values are __IPv4__
     or __IPv6__. Changing this creates a new security group rule.
 
-* `protocol` - (Optional) The layer 4 protocol type, valid values are following. Changing this creates a new security group rule. This is required if you want to specify a port range.
+* `protocol` - (Optional) The layer 4 protocol type, valid values are
+  following. Changing this creates a new security group rule. This is required
+  if you want to specify a port range.
+  * empty string or omitted (any protocol)
+  * integer value between 0 and 255 (valid IP protocol number)
   * __tcp__
   * __udp__
   * __icmp__
@@ -74,6 +78,7 @@ The following arguments are supported:
   * __sctp__
   * __udplite__
   * __vrrp__
+  * __ipip__
 
 * `port_range_min` - (Optional) The lower part of the allowed port range, valid
     integer value needs to be between 1 and 65535. Changing this creates a new
@@ -89,6 +94,11 @@ The following arguments are supported:
 * `remote_group_id` - (Optional) The remote group id, the value needs to be an
     Openstack ID of a security group in the same tenant. Changing this creates
     a new security group rule.
+
+* `remote_address_group_id` - (Optional) The remote address group id, the value
+    needs to be an OpenStack ID of an address group in the same tenant. Changing
+    this creates a new security group rule. This argument is mutually exclusive
+    with `remote_ip_prefix` and `remote_group_id`.
 
 * `security_group_id` - (Required) The security group id the rule should belong
     to, the value needs to be an Openstack ID of a security group in the same
@@ -111,6 +121,7 @@ The following attributes are exported:
 * `port_range_max` - See Argument Reference above.
 * `remote_ip_prefix` - See Argument Reference above.
 * `remote_group_id` - See Argument Reference above.
+* `remote_address_group_id` - See Argument Reference above.
 * `security_group_id` - See Argument Reference above.
 * `tenant_id` - See Argument Reference above.
 

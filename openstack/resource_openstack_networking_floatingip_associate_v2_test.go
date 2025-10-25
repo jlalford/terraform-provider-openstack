@@ -1,14 +1,16 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/floatingips"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/layer3/floatingips"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccNetworkingV2FloatingIPAssociate_basic(t *testing.T) {
@@ -20,12 +22,12 @@ func TestAccNetworkingV2FloatingIPAssociate_basic(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2FloatingIPAssociateDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2FloatingIPAssociateDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2FloatingIPAssociateBasic(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2FloatingIPExists(
+					testAccCheckNetworkingV2FloatingIPExists(t.Context(),
 						"openstack_networking_floatingip_associate_v2.fip_1", &fip),
 					resource.TestCheckResourceAttrPtr(
 						"openstack_networking_floatingip_associate_v2.fip_1", "floating_ip", &fip.FloatingIP),
@@ -46,12 +48,12 @@ func TestAccNetworkingV2FloatingIPAssociate_twoFixedIPs(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2FloatingIPAssociateDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2FloatingIPAssociateDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2FloatingIPAssociateTwoFixedIPs1(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2FloatingIPExists(
+					testAccCheckNetworkingV2FloatingIPExists(t.Context(),
 						"openstack_networking_floatingip_associate_v2.fip_1", &fip),
 					resource.TestCheckResourceAttrPtr(
 						"openstack_networking_floatingip_associate_v2.fip_1", "floating_ip", &fip.FloatingIP),
@@ -64,7 +66,7 @@ func TestAccNetworkingV2FloatingIPAssociate_twoFixedIPs(t *testing.T) {
 			{
 				Config: testAccNetworkingV2FloatingIPAssociateTwoFixedIPs2(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2FloatingIPExists(
+					testAccCheckNetworkingV2FloatingIPExists(t.Context(),
 						"openstack_networking_floatingip_associate_v2.fip_1", &fip),
 					resource.TestCheckResourceAttrPtr(
 						"openstack_networking_floatingip_associate_v2.fip_1", "floating_ip", &fip.FloatingIP),
@@ -78,33 +80,36 @@ func TestAccNetworkingV2FloatingIPAssociate_twoFixedIPs(t *testing.T) {
 	})
 }
 
-func testAccCheckNetworkingV2FloatingIPAssociateDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	networkClient, err := config.NetworkingV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack network client: %s", err)
-	}
+func testAccCheckNetworkingV2FloatingIPAssociateDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_networking_floatingip_v2" {
-			continue
+		networkClient, err := config.NetworkingV2Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack network client: %w", err)
 		}
 
-		fip, err := floatingips.Get(networkClient, rs.Primary.ID).Extract()
-		if err != nil {
-			if _, ok := err.(gophercloud.ErrDefault404); ok {
-				return nil
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_networking_floatingip_v2" {
+				continue
 			}
 
-			return fmt.Errorf("Error retrieving Floating IP: %s", err)
+			fip, err := floatingips.Get(ctx, networkClient, rs.Primary.ID).Extract()
+			if err != nil {
+				if gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
+					return nil
+				}
+
+				return fmt.Errorf("Error retrieving Floating IP: %w", err)
+			}
+
+			if fip.PortID != "" {
+				return errors.New("Floating IP is still associated")
+			}
 		}
 
-		if fip.PortID != "" {
-			return fmt.Errorf("Floating IP is still associated")
-		}
+		return nil
 	}
-
-	return nil
 }
 
 func testAccNetworkingV2FloatingIPAssociateBasic() string {
@@ -118,12 +123,12 @@ resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
   cidr = "192.168.199.0/24"
   ip_version = 4
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 }
 
 resource "openstack_networking_router_interface_v2" "router_interface_1" {
-  router_id = "${openstack_networking_router_v2.router_1.id}"
-  subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+  router_id = openstack_networking_router_v2.router_1.id
+  subnet_id = openstack_networking_subnet_v2.subnet_1.id
 }
 
 resource "openstack_networking_router_v2" "router_1" {
@@ -133,10 +138,10 @@ resource "openstack_networking_router_v2" "router_1" {
 
 resource "openstack_networking_port_v2" "port_1" {
   admin_state_up = "true"
-  network_id = "${openstack_networking_subnet_v2.subnet_1.network_id}"
+  network_id = openstack_networking_subnet_v2.subnet_1.network_id
 
   fixed_ip {
-    subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+    subnet_id = openstack_networking_router_interface_v2.router_interface_1.subnet_id
     ip_address = "192.168.199.20"
   }
 }
@@ -146,8 +151,9 @@ resource "openstack_networking_floatingip_v2" "fip_1" {
 }
 
 resource "openstack_networking_floatingip_associate_v2" "fip_1" {
-  floating_ip = "${openstack_networking_floatingip_v2.fip_1.address}"
-  port_id = "${openstack_networking_port_v2.port_1.id}"
+  floating_ip = openstack_networking_floatingip_v2.fip_1.address
+  port_id = openstack_networking_port_v2.port_1.id
+
 }
 `, osExtGwID, osPoolName)
 }
@@ -163,12 +169,12 @@ resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
   cidr = "192.168.199.0/24"
   ip_version = 4
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 }
 
 resource "openstack_networking_router_interface_v2" "router_interface_1" {
-  router_id = "${openstack_networking_router_v2.router_1.id}"
-  subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+  router_id = openstack_networking_router_v2.router_1.id
+  subnet_id = openstack_networking_subnet_v2.subnet_1.id
 }
 
 resource "openstack_networking_router_v2" "router_1" {
@@ -178,15 +184,15 @@ resource "openstack_networking_router_v2" "router_1" {
 
 resource "openstack_networking_port_v2" "port_1" {
   admin_state_up = "true"
-  network_id = "${openstack_networking_subnet_v2.subnet_1.network_id}"
+  network_id = openstack_networking_subnet_v2.subnet_1.network_id
 
   fixed_ip {
-    subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+    subnet_id = openstack_networking_router_interface_v2.router_interface_1.subnet_id
     ip_address = "192.168.199.20"
   }
 
   fixed_ip {
-    subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+    subnet_id = openstack_networking_router_interface_v2.router_interface_1.subnet_id
     ip_address = "192.168.199.21"
   }
 }
@@ -196,8 +202,8 @@ resource "openstack_networking_floatingip_v2" "fip_1" {
 }
 
 resource "openstack_networking_floatingip_associate_v2" "fip_1" {
-  floating_ip = "${openstack_networking_floatingip_v2.fip_1.address}"
-  port_id = "${openstack_networking_port_v2.port_1.id}"
+  floating_ip = openstack_networking_floatingip_v2.fip_1.address
+  port_id = openstack_networking_port_v2.port_1.id
   fixed_ip = "192.168.199.20"
 }
 `, osExtGwID, osPoolName)
@@ -214,12 +220,12 @@ resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
   cidr = "192.168.199.0/24"
   ip_version = 4
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 }
 
 resource "openstack_networking_router_interface_v2" "router_interface_1" {
-  router_id = "${openstack_networking_router_v2.router_1.id}"
-  subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+  router_id = openstack_networking_router_v2.router_1.id
+  subnet_id = openstack_networking_subnet_v2.subnet_1.id
 }
 
 resource "openstack_networking_router_v2" "router_1" {
@@ -229,15 +235,15 @@ resource "openstack_networking_router_v2" "router_1" {
 
 resource "openstack_networking_port_v2" "port_1" {
   admin_state_up = "true"
-  network_id = "${openstack_networking_subnet_v2.subnet_1.network_id}"
+  network_id = openstack_networking_subnet_v2.subnet_1.network_id
 
   fixed_ip {
-    subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+    subnet_id = openstack_networking_router_interface_v2.router_interface_1.subnet_id
     ip_address = "192.168.199.20"
   }
 
   fixed_ip {
-    subnet_id = "${openstack_networking_subnet_v2.subnet_1.id}"
+    subnet_id = openstack_networking_router_interface_v2.router_interface_1.subnet_id
     ip_address = "192.168.199.21"
   }
 }
@@ -247,8 +253,8 @@ resource "openstack_networking_floatingip_v2" "fip_1" {
 }
 
 resource "openstack_networking_floatingip_associate_v2" "fip_1" {
-  floating_ip = "${openstack_networking_floatingip_v2.fip_1.address}"
-  port_id = "${openstack_networking_port_v2.port_1.id}"
+  floating_ip = openstack_networking_floatingip_v2.fip_1.address
+  port_id = openstack_networking_port_v2.port_1.id
   fixed_ip = "192.168.199.21"
 }
 `, osExtGwID, osPoolName)

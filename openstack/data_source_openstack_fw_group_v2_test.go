@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccFWGroupV2DataSource_basic(t *testing.T) {
@@ -104,7 +105,7 @@ func testAccCheckFWGroupV2DataSourceID(n string) resource.TestCheckFunc {
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Firewall group data source ID not set")
+			return errors.New("Firewall group data source ID not set")
 		}
 
 		return nil
@@ -125,8 +126,8 @@ resource "openstack_fw_policy_v2" "policy_2" {
 resource "openstack_fw_group_v2" "group_1" {
   name                       = "group_1"
   description                = "My firewall group"
-  ingress_firewall_policy_id = "${openstack_fw_policy_v2.policy_1.id}"
-  egress_firewall_policy_id  = "${openstack_fw_policy_v2.policy_2.id}"
+  ingress_firewall_policy_id = openstack_fw_policy_v2.policy_1.id
+  egress_firewall_policy_id  = openstack_fw_policy_v2.policy_2.id
 }
 `
 
@@ -137,10 +138,10 @@ func testAccFWGroupV2DataSourceBasic() string {
 data "openstack_fw_group_v2" "group_1" {
   name                       = "group_1"
   description                = "My firewall group"
-  project_id                 = "${openstack_fw_group_v2.group_1.project_id}"
+  project_id                 = openstack_fw_group_v2.group_1.project_id
   shared                     = false
-  ingress_firewall_policy_id = "${openstack_fw_policy_v2.policy_1.id}"
-  egress_firewall_policy_id  = "${openstack_fw_policy_v2.policy_2.id}"
+  ingress_firewall_policy_id = openstack_fw_policy_v2.policy_1.id
+  egress_firewall_policy_id  = openstack_fw_policy_v2.policy_2.id
 }
 `, testAccFWGroupV2DataSourceGroup)
 }
@@ -160,8 +161,8 @@ resource "openstack_fw_group_v2" "group_1" {
   name                       = "group_1"
   description                = "My firewall group"
   shared                     = true
-  ingress_firewall_policy_id = "${openstack_fw_policy_v2.policy_1.id}"
-  egress_firewall_policy_id  = "${openstack_fw_policy_v2.policy_2.id}"
+  ingress_firewall_policy_id = openstack_fw_policy_v2.policy_1.id
+  egress_firewall_policy_id  = openstack_fw_policy_v2.policy_2.id
 }
 `
 
@@ -172,10 +173,10 @@ func testAccFWGroupV2DataSourceShared() string {
 data "openstack_fw_group_v2" "group_1" {
   name                       = "group_1"
   description                = "My firewall group"
-  tenant_id                  = "${openstack_fw_group_v2.group_1.tenant_id}"
+  tenant_id                  = openstack_fw_group_v2.group_1.tenant_id
   shared                     = true
-  ingress_firewall_policy_id = "${openstack_fw_policy_v2.policy_1.id}"
-  egress_firewall_policy_id  = "${openstack_fw_policy_v2.policy_2.id}"
+  ingress_firewall_policy_id = openstack_fw_policy_v2.policy_1.id
+  egress_firewall_policy_id  = openstack_fw_policy_v2.policy_2.id
 }
 `, testAccFWGroupV2DataSourceGroupShared)
 }
@@ -185,7 +186,7 @@ func testAccFWGroupV2DataSourceGroupID() string {
 %s
 
 data "openstack_fw_group_v2" "group_1" {
-  group_id = "${openstack_fw_group_v2.group_1.id}"
+  group_id = openstack_fw_group_v2.group_1.id
 }
 `, testAccFWGroupV2DataSourceGroup)
 }

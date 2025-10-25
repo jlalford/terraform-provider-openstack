@@ -1,12 +1,13 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccComputeV2FlavorDataSource_basic(t *testing.T) {
@@ -114,7 +115,7 @@ func TestAccComputeV2FlavorDataSource_testQueries(t *testing.T) {
 }
 
 func TestAccComputeV2FlavorDataSource_extraSpecs(t *testing.T) {
-	var flavorName = acctest.RandomWithPrefix("tf-acc-flavor")
+	flavorName := acctest.RandomWithPrefix("tf-acc-flavor")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -145,7 +146,7 @@ func TestAccComputeV2FlavorDataSource_extraSpecs(t *testing.T) {
 }
 
 func TestAccComputeV2FlavorDataSource_flavorID(t *testing.T) {
-	var flavorName = acctest.RandomWithPrefix("tf-acc-flavor")
+	flavorName := acctest.RandomWithPrefix("tf-acc-flavor")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -183,7 +184,7 @@ func testAccCheckComputeV2FlavorDataSourceID(n string) resource.TestCheckFunc {
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Flavor data source ID not set")
+			return errors.New("Flavor data source ID not set")
 		}
 
 		return nil
@@ -230,7 +231,7 @@ func testAccComputeV2FlavorDataSourceExtraSpecs(flavorName string) string {
           %s
 
           data "openstack_compute_flavor_v2" "flavor_1" {
-            name = "${openstack_compute_flavor_v2.flavor_1.name}"
+            name = openstack_compute_flavor_v2.flavor_1.name
           }
           `, flavorResource)
 }
@@ -242,7 +243,7 @@ func testAccComputeV2FlavorDataSourceFlavorID(flavorName string) string {
           %s
 
           data "openstack_compute_flavor_v2" "flavor_1" {
-            flavor_id = "${openstack_compute_flavor_v2.flavor_1.id}"
+            flavor_id = openstack_compute_flavor_v2.flavor_1.id
           }
           `, flavorResource)
 }

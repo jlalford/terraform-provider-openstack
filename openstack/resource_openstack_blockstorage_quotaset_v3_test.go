@@ -1,16 +1,17 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/blockstorage/extensions/quotasets"
-	"github.com/gophercloud/gophercloud/openstack/blockstorage/v3/volumetypes"
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/projects"
+	"github.com/gophercloud/gophercloud/v2/openstack/blockstorage/v3/quotasets"
+	"github.com/gophercloud/gophercloud/v2/openstack/blockstorage/v3/volumetypes"
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/projects"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccBlockStorageQuotasetV3_basic(t *testing.T) {
@@ -26,13 +27,13 @@ func TestAccBlockStorageQuotasetV3_basic(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckBlockStorageQuotasetV3Destroy,
+		CheckDestroy:      testAccCheckBlockStorageQuotasetV3Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBlockStorageQuotasetV3Basic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3ProjectExists("openstack_identity_project_v3.project_1", &project),
-					testAccCheckBlockStorageQuotasetV3Exists("openstack_blockstorage_quotaset_v3.quotaset_1", &quotaset),
+					testAccCheckIdentityV3ProjectExists(t.Context(), "openstack_identity_project_v3.project_1", &project),
+					testAccCheckBlockStorageQuotasetV3Exists(t.Context(), "openstack_blockstorage_quotaset_v3.quotaset_1", &quotaset),
 					resource.TestCheckResourceAttr(
 						"openstack_blockstorage_quotaset_v3.quotaset_1", "volumes", "2"),
 					resource.TestCheckResourceAttr(
@@ -52,9 +53,9 @@ func TestAccBlockStorageQuotasetV3_basic(t *testing.T) {
 			{
 				Config: testAccBlockStorageQuotasetV3Update1,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3ProjectExists("openstack_identity_project_v3.project_1", &project),
-					testAccCheckBlockStorageVolumeTypeV3Exists("openstack_blockstorage_volume_type_v3.volume_type_1", &volumeType),
-					testAccCheckBlockStorageQuotasetV3Exists("openstack_blockstorage_quotaset_v3.quotaset_1", &quotaset),
+					testAccCheckIdentityV3ProjectExists(t.Context(), "openstack_identity_project_v3.project_1", &project),
+					testAccCheckBlockStorageVolumeTypeV3Exists(t.Context(), "openstack_blockstorage_volume_type_v3.volume_type_1", &volumeType),
+					testAccCheckBlockStorageQuotasetV3Exists(t.Context(), "openstack_blockstorage_quotaset_v3.quotaset_1", &quotaset),
 					resource.TestCheckResourceAttr(
 						"openstack_blockstorage_quotaset_v3.quotaset_1", "volumes", "3"),
 					resource.TestCheckResourceAttr(
@@ -82,9 +83,9 @@ func TestAccBlockStorageQuotasetV3_basic(t *testing.T) {
 			{
 				Config: testAccBlockStorageQuotasetV3Update2,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3ProjectExists("openstack_identity_project_v3.project_1", &project),
-					testAccCheckBlockStorageVolumeTypeV3Exists("openstack_blockstorage_volume_type_v3.volume_type_1", &volumeType),
-					testAccCheckBlockStorageQuotasetV3Exists("openstack_blockstorage_quotaset_v3.quotaset_1", &quotaset),
+					testAccCheckIdentityV3ProjectExists(t.Context(), "openstack_identity_project_v3.project_1", &project),
+					testAccCheckBlockStorageVolumeTypeV3Exists(t.Context(), "openstack_blockstorage_volume_type_v3.volume_type_1", &volumeType),
+					testAccCheckBlockStorageQuotasetV3Exists(t.Context(), "openstack_blockstorage_quotaset_v3.quotaset_1", &quotaset),
 					resource.TestCheckResourceAttr(
 						"openstack_blockstorage_quotaset_v3.quotaset_1", "volumes", "3"),
 					resource.TestCheckResourceAttr(
@@ -113,7 +114,7 @@ func TestAccBlockStorageQuotasetV3_basic(t *testing.T) {
 	})
 }
 
-func testAccCheckBlockStorageQuotasetV3Exists(n string, quotaset *quotasets.QuotaSet) resource.TestCheckFunc {
+func testAccCheckBlockStorageQuotasetV3Exists(ctx context.Context, n string, quotaset *quotasets.QuotaSet) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -121,24 +122,25 @@ func testAccCheckBlockStorageQuotasetV3Exists(n string, quotaset *quotasets.Quot
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		blockStorageClient, err := config.BlockStorageV3Client(osRegionName)
+
+		blockStorageClient, err := config.BlockStorageV3Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack block storage client: %s", err)
+			return fmt.Errorf("Error creating OpenStack block storage client: %w", err)
 		}
 
 		projectID := strings.Split(rs.Primary.ID, "/")[0]
 
-		found, err := quotasets.Get(blockStorageClient, projectID).Extract()
+		found, err := quotasets.Get(ctx, blockStorageClient, projectID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != projectID {
-			return fmt.Errorf("Quotaset not found")
+			return errors.New("Quotaset not found")
 		}
 
 		*quotaset = *found
@@ -147,18 +149,20 @@ func testAccCheckBlockStorageQuotasetV3Exists(n string, quotaset *quotasets.Quot
 	}
 }
 
-func testAccCheckBlockStorageQuotasetV3Destroy(s *terraform.State) error {
-	err := testAccCheckIdentityV3ProjectDestroy(s)
-	if err != nil {
-		return err
-	}
+func testAccCheckBlockStorageQuotasetV3Destroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		err := testAccCheckIdentityV3ProjectDestroy(ctx)(s)
+		if err != nil {
+			return err
+		}
 
-	err = testAccCheckBlockStorageVolumeTypeV3Destroy(s)
-	if err != nil {
-		return err
-	}
+		err = testAccCheckBlockStorageVolumeTypeV3Destroy(ctx)(s)
+		if err != nil {
+			return err
+		}
 
-	return nil
+		return nil
+	}
 }
 
 const testAccBlockStorageQuotasetV3Basic = `
@@ -167,7 +171,7 @@ resource "openstack_identity_project_v3" "project_1" {
 }
 
 resource "openstack_blockstorage_quotaset_v3" "quotaset_1" {
-  project_id            = "${openstack_identity_project_v3.project_1.id}"
+  project_id            = openstack_identity_project_v3.project_1.id
   volumes               = 2
   snapshots             = 2
   gigabytes             = 2
@@ -218,7 +222,7 @@ resource "openstack_blockstorage_volume_type_v3" "volume_type_1" {
 }
 
 resource "openstack_blockstorage_quotaset_v3" "quotaset_1" {
-  project_id           = "${openstack_identity_project_v3.project_1.id}"
+  project_id           = openstack_identity_project_v3.project_1.id
   volumes              = 3
   snapshots            = 3
   gigabytes            = 4
@@ -254,7 +258,7 @@ resource "openstack_blockstorage_volume_type_v3" "volume_type_1" {
 }
 
 resource "openstack_blockstorage_quotaset_v3" "quotaset_1" {
-  project_id           = "${openstack_identity_project_v3.project_1.id}"
+  project_id           = openstack_identity_project_v3.project_1.id
   volumes              = 3
   snapshots            = 3
   gigabytes            = 4

@@ -3,7 +3,7 @@ package openstack
 import (
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestAccKeyManagerOrderV1_importBasic(t *testing.T) {
@@ -16,7 +16,7 @@ func TestAccKeyManagerOrderV1_importBasic(t *testing.T) {
 			testAccPreCheckKeyManager(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckOrderV1Destroy,
+		CheckDestroy:      testAccCheckOrderV1Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccKeyManagerOrderV1Symmetric,

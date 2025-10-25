@@ -4,10 +4,9 @@ import (
 	"context"
 	"log"
 
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/roles"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/roles"
 )
 
 func resourceIdentityRoleAssignmentV3() *schema.Resource {
@@ -64,9 +63,10 @@ func resourceIdentityRoleAssignmentV3() *schema.Resource {
 	}
 }
 
-func resourceIdentityRoleAssignmentV3Create(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceIdentityRoleAssignmentV3Create(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	identityClient, err := config.IdentityV3Client(GetRegion(d, config))
+
+	identityClient, err := config.IdentityV3Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack identity client: %s", err)
 	}
@@ -84,7 +84,7 @@ func resourceIdentityRoleAssignmentV3Create(ctx context.Context, d *schema.Resou
 		UserID:    userID,
 	}
 
-	err = roles.Assign(identityClient, roleID, opts).ExtractErr()
+	err = roles.Assign(ctx, identityClient, roleID, opts).ExtractErr()
 	if err != nil {
 		return diag.Errorf("Error creating openstack_identity_role_assignment_v3: %s", err)
 	}
@@ -95,14 +95,15 @@ func resourceIdentityRoleAssignmentV3Create(ctx context.Context, d *schema.Resou
 	return resourceIdentityRoleAssignmentV3Read(ctx, d, meta)
 }
 
-func resourceIdentityRoleAssignmentV3Read(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceIdentityRoleAssignmentV3Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	identityClient, err := config.IdentityV3Client(GetRegion(d, config))
+
+	identityClient, err := config.IdentityV3Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack identity client: %s", err)
 	}
 
-	roleAssignment, err := identityRoleAssignmentV3FindAssignment(identityClient, d.Id())
+	roleAssignment, err := identityRoleAssignmentV3FindAssignment(ctx, identityClient, d.Id())
 	if err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "Error retrieving openstack_identity_role_assignment_v3"))
 	}
@@ -118,9 +119,10 @@ func resourceIdentityRoleAssignmentV3Read(ctx context.Context, d *schema.Resourc
 	return nil
 }
 
-func resourceIdentityRoleAssignmentV3Delete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceIdentityRoleAssignmentV3Delete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	identityClient, err := config.IdentityV3Client(GetRegion(d, config))
+
+	identityClient, err := config.IdentityV3Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack identity client: %s", err)
 	}
@@ -137,7 +139,7 @@ func resourceIdentityRoleAssignmentV3Delete(ctx context.Context, d *schema.Resou
 		UserID:    userID,
 	}
 
-	if err := roles.Unassign(identityClient, roleID, opts).ExtractErr(); err != nil {
+	if err := roles.Unassign(ctx, identityClient, roleID, opts).ExtractErr(); err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "Error unassigning openstack_identity_role_assignment_v3"))
 	}
 

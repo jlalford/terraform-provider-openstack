@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccOpenStackImagesV2ImageDataSource_basic(t *testing.T) {
@@ -108,7 +109,7 @@ func testAccCheckImagesV2DataSourceID(n string) resource.TestCheckFunc {
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Image data source ID not set")
+			return errors.New("Image data source ID not set")
 		}
 
 		return nil
@@ -159,7 +160,7 @@ func testAccOpenStackImagesV2ImageDataSourceBasic() string {
 
 data "openstack_images_image_v2" "image_1" {
 	most_recent = true
-	name = "${openstack_images_image_v2.image_1.name}"
+	name = openstack_images_image_v2.image_1.name
 }
 `, testAccOpenStackImagesV2ImageDataSourceCirros)
 }
@@ -174,6 +175,7 @@ data "openstack_images_image_v2" "image_2" {
 }
 `, testAccOpenStackImagesV2ImageDataSourceCirros)
 }
+
 func testAccOpenStackImagesV2ImageDataSourceQueryTag() string {
 	return fmt.Sprintf(`
 %s
@@ -185,6 +187,7 @@ data "openstack_images_image_v2" "image_1" {
 }
 `, testAccOpenStackImagesV2ImageDataSourceCirros)
 }
+
 func testAccOpenStackImagesV2ImageDataSourceQueryTagList() string {
 	return fmt.Sprintf(`
 %s
@@ -196,6 +199,7 @@ data "openstack_images_image_v2" "image_1" {
 }
 `, testAccOpenStackImagesV2ImageDataSourceCirros)
 }
+
 func testAccOpenStackImagesV2ImageDataSourceQuerySizeMin() string {
 	return fmt.Sprintf(`
 %s

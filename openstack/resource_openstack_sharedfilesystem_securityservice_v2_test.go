@@ -1,13 +1,14 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/sharedfilesystems/v2/securityservices"
+	"github.com/gophercloud/gophercloud/v2/openstack/sharedfilesystems/v2/securityservices"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccSFSV2SecurityService_basic(t *testing.T) {
@@ -20,12 +21,12 @@ func TestAccSFSV2SecurityService_basic(t *testing.T) {
 			testAccPreCheckSFS(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckSFSV2SecurityServiceDestroy,
+		CheckDestroy:      testAccCheckSFSV2SecurityServiceDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccSFSV2SecurityServiceConfigBasic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSFSV2SecurityServiceExists("openstack_sharedfilesystem_securityservice_v2.securityservice_1", &securityservice),
+					testAccCheckSFSV2SecurityServiceExists(t.Context(), "openstack_sharedfilesystem_securityservice_v2.securityservice_1", &securityservice),
 					resource.TestCheckResourceAttr(
 						"openstack_sharedfilesystem_securityservice_v2.securityservice_1", "name", "security"),
 					resource.TestCheckResourceAttr(
@@ -49,7 +50,7 @@ func TestAccSFSV2SecurityService_basic(t *testing.T) {
 			{
 				Config: testAccSFSV2SecurityServiceConfigUpdate,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckSFSV2SecurityServiceExists("openstack_sharedfilesystem_securityservice_v2.securityservice_1", &securityservice),
+					testAccCheckSFSV2SecurityServiceExists(t.Context(), "openstack_sharedfilesystem_securityservice_v2.securityservice_1", &securityservice),
 					resource.TestCheckResourceAttr(
 						"openstack_sharedfilesystem_securityservice_v2.securityservice_1", "name", "security_through_obscurity"),
 					resource.TestCheckResourceAttr(
@@ -74,28 +75,57 @@ func TestAccSFSV2SecurityService_basic(t *testing.T) {
 	})
 }
 
-func testAccCheckSFSV2SecurityServiceDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	sfsClient, err := config.SharedfilesystemV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack sharedfilesystem client: %s", err)
-	}
-
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_sharedfilesystem_securityservice_v2" {
-			continue
-		}
-
-		_, err := securityservices.Get(sfsClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("Manila securityservice still exists: %s", rs.Primary.ID)
-		}
-	}
-
-	return nil
+func TestAccSFSV2SecurityService_EndpointCheck(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccPreCheckAdminOnly(t)
+			testAccPreCheckSFS(t)
+		},
+		ProviderFactories: testAccProviders,
+		CheckDestroy:      testAccCheckSFSV2SecurityServiceDestroy(t.Context()),
+		Steps: []resource.TestStep{
+			{
+				// register the volumev2 service and endpoint
+				Config: testAccSFSV2SecurityServiceConfigUpdateEndpointCheck,
+			},
+			{
+				// test endpoint locator to pick up sharev2
+				Config: testAccSFSV2SecurityServiceConfigUpdateEndpointCheck + testAccSFSV2SecurityServiceConfigBasic,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"openstack_sharedfilesystem_securityservice_v2.securityservice_1", "name", "security"),
+				),
+			},
+		},
+	})
 }
 
-func testAccCheckSFSV2SecurityServiceExists(n string, securityservice *securityservices.SecurityService) resource.TestCheckFunc {
+func testAccCheckSFSV2SecurityServiceDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
+
+		sfsClient, err := config.SharedfilesystemV2Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack sharedfilesystem client: %w", err)
+		}
+
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_sharedfilesystem_securityservice_v2" {
+				continue
+			}
+
+			_, err := securityservices.Get(ctx, sfsClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return fmt.Errorf("Manila securityservice still exists: %s", rs.Primary.ID)
+			}
+		}
+
+		return nil
+	}
+}
+
+func testAccCheckSFSV2SecurityServiceExists(ctx context.Context, n string, securityservice *securityservices.SecurityService) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -103,22 +133,23 @@ func testAccCheckSFSV2SecurityServiceExists(n string, securityservice *securitys
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		sfsClient, err := config.SharedfilesystemV2Client(osRegionName)
+
+		sfsClient, err := config.SharedfilesystemV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack sharedfilesystem client: %s", err)
+			return fmt.Errorf("Error creating OpenStack sharedfilesystem client: %w", err)
 		}
 
-		found, err := securityservices.Get(sfsClient, rs.Primary.ID).Extract()
+		found, err := securityservices.Get(ctx, sfsClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Member not found")
+			return errors.New("Member not found")
 		}
 
 		*securityservice = *found
@@ -148,5 +179,19 @@ resource "openstack_sharedfilesystem_securityservice_v2" "securityservice_1" {
   type        = "kerberos"
   server      = "192.168.199.11"
   dns_ip      = "192.168.199.11"
+}
+`
+
+const testAccSFSV2SecurityServiceConfigUpdateEndpointCheck = `
+resource "openstack_identity_service_v3" "service_1" {
+  name = "manilav2"
+  type = "sharev2"
+}
+
+resource "openstack_identity_endpoint_v3" "endpoint_1" {
+  name            = "sharev2"
+  service_id      = openstack_identity_service_v3.service_1.id
+  endpoint_region = openstack_identity_service_v3.service_1.region
+  url             = "http://my-endpoint"
 }
 `

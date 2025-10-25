@@ -1,28 +1,33 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/security/groups"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/security/groups"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/networks"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/ports"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccNetworkingV2PortSecGroupAssociate_update(t *testing.T) {
 	var port ports.Port
 
 	if os.Getenv("TF_ACC") != "" {
-		hiddenPort, err := testAccCheckNetworkingV2PortSecGroupCreatePort(t, "hidden_port", true)
+		testAccPreCheck(t)
+		testAccPreCheckNonAdminOnly(t)
+
+		hiddenPort, err := testAccCheckNetworkingV2PortSecGroupCreatePort(t, "hidden_port_1", true)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer testAccCheckNetworkingV2PortSecGroupDeletePort(t, hiddenPort) //nolint:errcheck
+
+		defer testAccCheckNetworkingV2PortSecGroupDeletePort(t, hiddenPort)
 	}
 
 	resource.Test(t, resource.TestCase{
@@ -36,14 +41,14 @@ func TestAccNetworkingV2PortSecGroupAssociate_update(t *testing.T) {
 			{ // step 0
 				Config: testAccNetworkingV2PortSecGroupAssociateManifestUpdate0(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2PortSecGroupAssociateExists("openstack_networking_port_secgroup_associate_v2.port_1", &port),
+					testAccCheckNetworkingV2PortSecGroupAssociateExists(t.Context(), "openstack_networking_port_secgroup_associate_v2.port_1", &port),
 					testAccCheckNetworkingV2PortSecGroupAssociateCountSecurityGroups(&port, 3),
 				),
 			},
 			{ // step 1
 				Config: testAccNetworkingV2PortSecGroupAssociateManifestUpdate1(), // unset user defined security groups only
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2PortSecGroupAssociateExists("data.openstack_networking_port_v2.hidden_port_1", &port),
+					testAccCheckNetworkingV2PortSecGroupAssociateExists(t.Context(), "data.openstack_networking_port_v2.hidden_port_1", &port),
 					testAccCheckNetworkingV2PortSecGroupAssociateCountSecurityGroups(&port, 2),
 				),
 			},
@@ -51,35 +56,35 @@ func TestAccNetworkingV2PortSecGroupAssociate_update(t *testing.T) {
 			{ // step 2
 				Config: testAccNetworkingV2PortSecGroupAssociateManifestUpdate2(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2PortSecGroupAssociateExists("openstack_networking_port_secgroup_associate_v2.port_1", &port),
+					testAccCheckNetworkingV2PortSecGroupAssociateExists(t.Context(), "openstack_networking_port_secgroup_associate_v2.port_1", &port),
 					testAccCheckNetworkingV2PortSecGroupAssociateCountSecurityGroups(&port, 1),
 				),
 			},
 			{ // step 3
 				Config: testAccNetworkingV2PortSecGroupAssociateManifestUpdate3(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2PortSecGroupAssociateExists("openstack_networking_port_secgroup_associate_v2.port_1", &port),
+					testAccCheckNetworkingV2PortSecGroupAssociateExists(t.Context(), "openstack_networking_port_secgroup_associate_v2.port_1", &port),
 					testAccCheckNetworkingV2PortSecGroupAssociateCountSecurityGroups(&port, 3),
 				),
 			},
 			{ // step 4
 				Config: testAccNetworkingV2PortSecGroupAssociateManifestUpdate4(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2PortSecGroupAssociateExists("openstack_networking_port_secgroup_associate_v2.port_1", &port),
+					testAccCheckNetworkingV2PortSecGroupAssociateExists(t.Context(), "openstack_networking_port_secgroup_associate_v2.port_1", &port),
 					testAccCheckNetworkingV2PortSecGroupAssociateCountSecurityGroups(&port, 1),
 				),
 			},
 			{ // step 5
 				Config: testAccNetworkingV2PortSecGroupAssociateManifestUpdate5(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2PortSecGroupAssociateExists("openstack_networking_port_secgroup_associate_v2.port_1", &port),
+					testAccCheckNetworkingV2PortSecGroupAssociateExists(t.Context(), "openstack_networking_port_secgroup_associate_v2.port_1", &port),
 					testAccCheckNetworkingV2PortSecGroupAssociateCountSecurityGroups(&port, 0),
 				),
 			},
 			{ // step 6
 				Config: testAccNetworkingV2PortSecGroupAssociateManifestUpdate6(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2PortSecGroupAssociateExists("openstack_networking_port_secgroup_associate_v2.port_1", &port),
+					testAccCheckNetworkingV2PortSecGroupAssociateExists(t.Context(), "openstack_networking_port_secgroup_associate_v2.port_1", &port),
 					testAccCheckNetworkingV2PortSecGroupAssociateCountSecurityGroups(&port, 1),
 				),
 			},
@@ -87,42 +92,42 @@ func TestAccNetworkingV2PortSecGroupAssociate_update(t *testing.T) {
 			{ // step 7
 				Config: testAccNetworkingV2PortSecGroupAssociateManifestUpdate7(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2PortSecGroupAssociateExists("openstack_networking_port_secgroup_associate_v2.port_1", &port),
+					testAccCheckNetworkingV2PortSecGroupAssociateExists(t.Context(), "openstack_networking_port_secgroup_associate_v2.port_1", &port),
 					testAccCheckNetworkingV2PortSecGroupAssociateCountSecurityGroups(&port, 1),
 				),
 			},
 			{ // step 8
 				Config: testAccNetworkingV2PortSecGroupAssociateManifestUpdate8(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2PortSecGroupAssociateExists("openstack_networking_port_secgroup_associate_v2.port_1", &port),
+					testAccCheckNetworkingV2PortSecGroupAssociateExists(t.Context(), "openstack_networking_port_secgroup_associate_v2.port_1", &port),
 					testAccCheckNetworkingV2PortSecGroupAssociateCountSecurityGroups(&port, 3),
 				),
 			},
 			{ // step 9
 				Config: testAccNetworkingV2PortSecGroupAssociateManifestUpdate9(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2PortSecGroupAssociateExists("openstack_networking_port_secgroup_associate_v2.port_1", &port),
+					testAccCheckNetworkingV2PortSecGroupAssociateExists(t.Context(), "openstack_networking_port_secgroup_associate_v2.port_1", &port),
 					testAccCheckNetworkingV2PortSecGroupAssociateCountSecurityGroups(&port, 1),
 				),
 			},
 			{ // step 10
 				Config: testAccNetworkingV2PortSecGroupAssociateManifestUpdate10(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2PortSecGroupAssociateExists("openstack_networking_port_secgroup_associate_v2.port_1", &port),
+					testAccCheckNetworkingV2PortSecGroupAssociateExists(t.Context(), "openstack_networking_port_secgroup_associate_v2.port_1", &port),
 					testAccCheckNetworkingV2PortSecGroupAssociateCountSecurityGroups(&port, 0),
 				),
 			},
 			{ // step 11
 				Config: testAccNetworkingV2PortSecGroupAssociateManifestUpdate11(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2PortSecGroupAssociateExists("openstack_networking_port_secgroup_associate_v2.port_1", &port),
+					testAccCheckNetworkingV2PortSecGroupAssociateExists(t.Context(), "openstack_networking_port_secgroup_associate_v2.port_1", &port),
 					testAccCheckNetworkingV2PortSecGroupAssociateCountSecurityGroups(&port, 1),
 				),
 			},
 			{ // step 12
 				Config: testAccNetworkingV2PortSecGroupAssociateManifestUpdate12(), // cleanup all the ports
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2PortSecGroupAssociateExists("data.openstack_networking_port_v2.hidden_port_1", &port),
+					testAccCheckNetworkingV2PortSecGroupAssociateExists(t.Context(), "data.openstack_networking_port_v2.hidden_port_1", &port),
 					testAccCheckNetworkingV2PortSecGroupAssociateCountSecurityGroups(&port, 0),
 				),
 			},
@@ -131,12 +136,9 @@ func TestAccNetworkingV2PortSecGroupAssociate_update(t *testing.T) {
 }
 
 func testAccCheckNetworkingV2PortSecGroupCreatePort(t *testing.T, portName string, defaultSecGroups bool) (*ports.Port, error) {
-	config, err := testAccAuthFromEnv()
-	if err != nil {
-		return nil, err
-	}
+	config := testAccProvider.Meta().(*Config)
 
-	client, err := config.NetworkingV2Client(osRegionName)
+	client, err := config.NetworkingV2Client(t.Context(), osRegionName)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +148,7 @@ func testAccCheckNetworkingV2PortSecGroupCreatePort(t *testing.T, portName strin
 		AdminStateUp: gophercloud.Enabled,
 	}
 
-	network, err := networks.Create(client, createNetOpts).Extract()
+	network, err := networks.Create(t.Context(), client, createNetOpts).Extract()
 	if err != nil {
 		return nil, err
 	}
@@ -154,22 +156,23 @@ func testAccCheckNetworkingV2PortSecGroupCreatePort(t *testing.T, portName strin
 	t.Logf("Network %s created", network.ID)
 
 	var securityGroups []string
+
 	if defaultSecGroups {
 		// create default security groups
 		createSecGroupOpts := groups.CreateOpts{
-			Name: "default_1",
+			Name: "default_sg_1",
 		}
 
-		secGroup1, err := groups.Create(client, createSecGroupOpts).Extract()
+		secGroup1, err := groups.Create(t.Context(), client, createSecGroupOpts).Extract()
 		if err != nil {
 			return nil, err
 		}
 
 		t.Logf("Default security group 1 %s created", secGroup1.ID)
 
-		createSecGroupOpts.Name = "default_2"
+		createSecGroupOpts.Name = "default_sg_2"
 
-		secGroup2, err := groups.Create(client, createSecGroupOpts).Extract()
+		secGroup2, err := groups.Create(t.Context(), client, createSecGroupOpts).Extract()
 		if err != nil {
 			return nil, err
 		}
@@ -189,12 +192,13 @@ func testAccCheckNetworkingV2PortSecGroupCreatePort(t *testing.T, portName strin
 		AdminStateUp:   gophercloud.Enabled,
 	}
 
-	port, err := ports.Create(client, createOpts).Extract()
+	port, err := ports.Create(t.Context(), client, createOpts).Extract()
 	if err != nil {
-		nErr := networks.Delete(client, network.ID).ExtractErr()
+		nErr := networks.Delete(t.Context(), client, network.ID).ExtractErr()
 		if nErr != nil {
-			return nil, fmt.Errorf("Unable to create port (%s) and delete network (%s: %s)", err, network.ID, nErr)
+			return nil, fmt.Errorf("Unable to create port (%w) and delete network (%s: %w)", err, network.ID, nErr)
 		}
+
 		return nil, err
 	}
 
@@ -203,44 +207,43 @@ func testAccCheckNetworkingV2PortSecGroupCreatePort(t *testing.T, portName strin
 	return port, nil
 }
 
-func testAccCheckNetworkingV2PortSecGroupDeletePort(t *testing.T, port *ports.Port) error {
-	config, err := testAccAuthFromEnv()
+func testAccCheckNetworkingV2PortSecGroupDeletePort(t *testing.T, port *ports.Port) {
+	config, err := testAccAuthFromEnv(t.Context())
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 
-	client, err := config.NetworkingV2Client(osRegionName)
+	client, err := config.NetworkingV2Client(t.Context(), osRegionName)
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 
-	err = ports.Delete(client, port.ID).ExtractErr()
+	err = ports.Delete(t.Context(), client, port.ID).ExtractErr()
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 
 	t.Logf("Port %s deleted", port.ID)
 
 	// delete default security groups
 	for _, secGroupID := range port.SecurityGroups {
-		err = groups.Delete(client, secGroupID).ExtractErr()
+		err = groups.Delete(t.Context(), client, secGroupID).ExtractErr()
 		if err != nil {
-			return err
+			t.Fatal(err)
 		}
+
 		t.Logf("Default security group %s deleted", secGroupID)
 	}
 
-	err = networks.Delete(client, port.NetworkID).ExtractErr()
+	err = networks.Delete(t.Context(), client, port.NetworkID).ExtractErr()
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 
 	t.Logf("Network %s deleted", port.NetworkID)
-
-	return nil
 }
 
-func testAccCheckNetworkingV2PortSecGroupAssociateExists(n string, port *ports.Port) resource.TestCheckFunc {
+func testAccCheckNetworkingV2PortSecGroupAssociateExists(ctx context.Context, n string, port *ports.Port) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -248,22 +251,23 @@ func testAccCheckNetworkingV2PortSecGroupAssociateExists(n string, port *ports.P
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		networkingClient, err := config.NetworkingV2Client(osRegionName)
+
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack networking client: %s", err)
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
 		}
 
-		found, err := ports.Get(networkingClient, rs.Primary.ID).Extract()
+		found, err := ports.Get(ctx, networkingClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Port not found")
+			return errors.New("Port not found")
 		}
 
 		*port = *found
@@ -273,7 +277,7 @@ func testAccCheckNetworkingV2PortSecGroupAssociateExists(n string, port *ports.P
 }
 
 func testAccCheckNetworkingV2PortSecGroupAssociateCountSecurityGroups(port *ports.Port, expected int) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
+	return func(_ *terraform.State) error {
 		if len(port.SecurityGroups) != expected {
 			return fmt.Errorf("Expected %d Security Groups, got %d", expected, len(port.SecurityGroups))
 		}
@@ -294,15 +298,15 @@ resource "openstack_networking_secgroup_v2" "secgroup_2" {
 }
 
 data "openstack_networking_secgroup_v2" "default_1" {
-  name = "default_1"
+  name = "default_sg_1"
 }
 
 data "openstack_networking_secgroup_v2" "default_2" {
-  name = "default_2"
+  name = "default_sg_2"
 }
 
 data "openstack_networking_port_v2" "hidden_port_1" {
-  name = "hidden_port"
+  name = "hidden_port_1"
 }
 `
 
@@ -311,10 +315,10 @@ func testAccNetworkingV2PortSecGroupAssociateManifestUpdate0() string {
 %s
 
 resource "openstack_networking_port_secgroup_associate_v2" "port_1" {
-  port_id = "${data.openstack_networking_port_v2.hidden_port_1.id}"
+  port_id = data.openstack_networking_port_v2.hidden_port_1.id
   enforce = "false"
   security_group_ids = [
-    "${openstack_networking_secgroup_v2.secgroup_1.id}",
+    openstack_networking_secgroup_v2.secgroup_1.id,
   ]
 }
 `, testAccNetworkingV2PortSecGroupAssociate)
@@ -331,10 +335,10 @@ func testAccNetworkingV2PortSecGroupAssociateManifestUpdate2() string {
 %s
 
 resource "openstack_networking_port_secgroup_associate_v2" "port_1" {
-  port_id = "${data.openstack_networking_port_v2.hidden_port_1.id}"
+  port_id = data.openstack_networking_port_v2.hidden_port_1.id
   enforce = "true"
   security_group_ids = [
-    "${openstack_networking_secgroup_v2.secgroup_1.id}",
+    openstack_networking_secgroup_v2.secgroup_1.id,
   ]
 }
 `, testAccNetworkingV2PortSecGroupAssociate)
@@ -345,12 +349,12 @@ func testAccNetworkingV2PortSecGroupAssociateManifestUpdate3() string {
 %s
 
 resource "openstack_networking_port_secgroup_associate_v2" "port_1" {
-  port_id = "${data.openstack_networking_port_v2.hidden_port_1.id}"
+  port_id = data.openstack_networking_port_v2.hidden_port_1.id
   enforce = "true"
   security_group_ids = [
-    "${openstack_networking_secgroup_v2.secgroup_1.id}",
-    "${openstack_networking_secgroup_v2.secgroup_2.id}",
-    "${data.openstack_networking_secgroup_v2.default_2.id}",
+    openstack_networking_secgroup_v2.secgroup_1.id,
+    openstack_networking_secgroup_v2.secgroup_2.id,
+    data.openstack_networking_secgroup_v2.default_2.id,
   ]
 }
 `, testAccNetworkingV2PortSecGroupAssociate)
@@ -361,10 +365,10 @@ func testAccNetworkingV2PortSecGroupAssociateManifestUpdate4() string {
 %s
 
 resource "openstack_networking_port_secgroup_associate_v2" "port_1" {
-  port_id = "${data.openstack_networking_port_v2.hidden_port_1.id}"
+  port_id = data.openstack_networking_port_v2.hidden_port_1.id
   enforce = "true"
   security_group_ids = [
-    "${openstack_networking_secgroup_v2.secgroup_2.id}",
+    openstack_networking_secgroup_v2.secgroup_2.id,
   ]
 }
 `, testAccNetworkingV2PortSecGroupAssociate)
@@ -375,11 +379,11 @@ func testAccNetworkingV2PortSecGroupAssociateManifestUpdate5() string {
 %s
 
 data "openstack_networking_port_v2" "port_1" {
-  port_id = "${openstack_networking_port_secgroup_associate_v2.port_1.id}"
+  port_id = openstack_networking_port_secgroup_associate_v2.port_1.id
 }
 
 resource "openstack_networking_port_secgroup_associate_v2" "port_1" {
-  port_id = "${data.openstack_networking_port_v2.hidden_port_1.id}"
+  port_id = data.openstack_networking_port_v2.hidden_port_1.id
   enforce = "true"
   security_group_ids = []
 }
@@ -391,10 +395,10 @@ func testAccNetworkingV2PortSecGroupAssociateManifestUpdate6() string {
 %s
 
 resource "openstack_networking_port_secgroup_associate_v2" "port_1" {
-  port_id = "${data.openstack_networking_port_v2.hidden_port_1.id}"
+  port_id = data.openstack_networking_port_v2.hidden_port_1.id
   enforce = "true"
   security_group_ids = [
-    "${data.openstack_networking_secgroup_v2.default_2.id}",
+    data.openstack_networking_secgroup_v2.default_2.id,
   ]
 }
 `, testAccNetworkingV2PortSecGroupAssociate)
@@ -405,10 +409,10 @@ func testAccNetworkingV2PortSecGroupAssociateManifestUpdate7() string {
 %s
 
 resource "openstack_networking_port_secgroup_associate_v2" "port_1" {
-  port_id = "${data.openstack_networking_port_v2.hidden_port_1.id}"
+  port_id = data.openstack_networking_port_v2.hidden_port_1.id
   enforce = "false"
   security_group_ids = [
-    "${openstack_networking_secgroup_v2.secgroup_1.id}",
+    openstack_networking_secgroup_v2.secgroup_1.id,
   ]
 }
 `, testAccNetworkingV2PortSecGroupAssociate)
@@ -419,12 +423,12 @@ func testAccNetworkingV2PortSecGroupAssociateManifestUpdate8() string {
 %s
 
 resource "openstack_networking_port_secgroup_associate_v2" "port_1" {
-  port_id = "${data.openstack_networking_port_v2.hidden_port_1.id}"
+  port_id = data.openstack_networking_port_v2.hidden_port_1.id
   enforce = "false"
   security_group_ids = [
-    "${openstack_networking_secgroup_v2.secgroup_1.id}",
-    "${openstack_networking_secgroup_v2.secgroup_2.id}",
-    "${data.openstack_networking_secgroup_v2.default_2.id}",
+    openstack_networking_secgroup_v2.secgroup_1.id,
+    openstack_networking_secgroup_v2.secgroup_2.id,
+    data.openstack_networking_secgroup_v2.default_2.id,
   ]
 }
 `, testAccNetworkingV2PortSecGroupAssociate)
@@ -435,10 +439,10 @@ func testAccNetworkingV2PortSecGroupAssociateManifestUpdate9() string {
 %s
 
 resource "openstack_networking_port_secgroup_associate_v2" "port_1" {
-  port_id = "${data.openstack_networking_port_v2.hidden_port_1.id}"
+  port_id = data.openstack_networking_port_v2.hidden_port_1.id
   enforce = "false"
   security_group_ids = [
-    "${openstack_networking_secgroup_v2.secgroup_2.id}",
+    openstack_networking_secgroup_v2.secgroup_2.id,
   ]
 }
 `, testAccNetworkingV2PortSecGroupAssociate)
@@ -449,7 +453,7 @@ func testAccNetworkingV2PortSecGroupAssociateManifestUpdate10() string {
 %s
 
 resource "openstack_networking_port_secgroup_associate_v2" "port_1" {
-  port_id = "${data.openstack_networking_port_v2.hidden_port_1.id}"
+  port_id = data.openstack_networking_port_v2.hidden_port_1.id
   enforce = "false"
   security_group_ids = []
 }
@@ -461,10 +465,10 @@ func testAccNetworkingV2PortSecGroupAssociateManifestUpdate11() string {
 %s
 
 resource "openstack_networking_port_secgroup_associate_v2" "port_1" {
-  port_id = "${data.openstack_networking_port_v2.hidden_port_1.id}"
+  port_id = data.openstack_networking_port_v2.hidden_port_1.id
   enforce = "false"
   security_group_ids = [
-    "${data.openstack_networking_secgroup_v2.default_2.id}",
+    data.openstack_networking_secgroup_v2.default_2.id,
   ]
 }
 `, testAccNetworkingV2PortSecGroupAssociate)

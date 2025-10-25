@@ -1,13 +1,13 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/users"
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/users"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccComputeV2KeypairDataSource_basic(t *testing.T) {
@@ -17,7 +17,7 @@ func TestAccComputeV2KeypairDataSource_basic(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckComputeV2KeypairDestroy,
+		CheckDestroy:      testAccCheckComputeV2KeypairDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccComputeV2KeypairDataSourceBasic,
@@ -44,13 +44,13 @@ func TestAccComputeV2KeypairDataSourceOtherUser(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckComputeV2KeypairDestroy,
+		CheckDestroy:      testAccCheckComputeV2KeypairDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccComputeV2KeypairDataSourceOtherUser,
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckComputeV2KeypairDataSourceID("data.openstack_compute_keypair_v2.kp"),
-					testAccCheckIdentityV3UserExists("openstack_identity_user_v3.user_1", &user),
+					testAccCheckIdentityV3UserExists(t.Context(), "openstack_identity_user_v3.user_1", &user),
 					resource.TestCheckResourceAttr(
 						"data.openstack_compute_keypair_v2.kp", "name", "the-key-name"),
 					resource.TestCheckResourceAttr(
@@ -73,7 +73,7 @@ func testAccCheckComputeV2KeypairDataSourceID(n string) resource.TestCheckFunc {
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Keypair data source ID not set")
+			return errors.New("Keypair data source ID not set")
 		}
 
 		return nil
@@ -87,7 +87,7 @@ resource "openstack_compute_keypair_v2" "kp" {
 }
 
 data "openstack_compute_keypair_v2" "kp" {
-  name = "${openstack_compute_keypair_v2.kp.name}"
+  name = openstack_compute_keypair_v2.kp.name
 }
 `
 
@@ -98,16 +98,16 @@ resource "openstack_identity_project_v3" "project_1" {
 	
 resource "openstack_identity_user_v3" "user_1" {
   name = "user_1"
-  default_project_id = "${openstack_identity_project_v3.project_1.id}"
+  default_project_id = openstack_identity_project_v3.project_1.id
 }
   
 resource "openstack_compute_keypair_v2" "kp" {
   name = "the-key-name"
   public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDAjpC1hwiOCCmKEWxJ4qzTTsJbKzndLo1BCz5PcwtUnflmU+gHJtWMZKpuEGVi29h0A/+ydKek1O18k10Ff+4tyFjiHDQAT9+OfgWf7+b1yK+qDip3X1C0UPMbwHlTfSGWLGZquwhvEFx9k3h/M+VtMvwR1lJ9LUyTAImnNjWG7TAIPmui30HvM2UiFEmqkr4ijq45MyX2+fLIePLRIFuu1p4whjHAQYufqyno3BS48icQb4p6iVEZPo4AE2o9oIyQvj2mx4dk5Y8CgSETOZTYDOR3rU2fZTRDRgPJDH9FWvQjF5tA0p3d9CoWWd2s6GKKbfoUIi8R/Db1BSPJwkqB jrp-hp-pc"
-  user_id = "${openstack_identity_user_v3.user_1.id}"
+  user_id = openstack_identity_user_v3.user_1.id
 }
 data "openstack_compute_keypair_v2" "kp" {
-  name = "${openstack_compute_keypair_v2.kp.name}"
-  user_id = "${openstack_identity_user_v3.user_1.id}"
+  name = openstack_compute_keypair_v2.kp.name
+  user_id = openstack_identity_user_v3.user_1.id
 }
 `

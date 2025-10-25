@@ -1,19 +1,21 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
+	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/flavors"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccComputeV2Flavor_basic(t *testing.T) {
 	var flavor flavors.Flavor
-	var flavorName = acctest.RandomWithPrefix("tf-acc-flavor")
+
+	flavorName := acctest.RandomWithPrefix("tf-acc-flavor")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -21,12 +23,12 @@ func TestAccComputeV2Flavor_basic(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckComputeV2FlavorDestroy,
+		CheckDestroy:      testAccCheckComputeV2FlavorDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccComputeV2FlavorBasic(flavorName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckComputeV2FlavorExists("openstack_compute_flavor_v2.flavor_1", &flavor),
+					testAccCheckComputeV2FlavorExists(t.Context(), "openstack_compute_flavor_v2.flavor_1", &flavor),
 					resource.TestCheckResourceAttr(
 						"openstack_compute_flavor_v2.flavor_1", "ram", "2048"),
 					resource.TestCheckResourceAttr(
@@ -40,7 +42,7 @@ func TestAccComputeV2Flavor_basic(t *testing.T) {
 			{
 				Config: testAccComputeV2FlavorBasicWithID(flavorName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckComputeV2FlavorExists("openstack_compute_flavor_v2.flavor_1", &flavor),
+					testAccCheckComputeV2FlavorExists(t.Context(), "openstack_compute_flavor_v2.flavor_1", &flavor),
 					resource.TestCheckResourceAttr(
 						"openstack_compute_flavor_v2.flavor_1", "ram", "2048"),
 					resource.TestCheckResourceAttr(
@@ -57,7 +59,8 @@ func TestAccComputeV2Flavor_basic(t *testing.T) {
 
 func TestAccComputeV2Flavor_extraSpecs(t *testing.T) {
 	var flavor flavors.Flavor
-	var flavorName = acctest.RandomWithPrefix("tf-acc-flavor")
+
+	flavorName := acctest.RandomWithPrefix("tf-acc-flavor")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -65,12 +68,12 @@ func TestAccComputeV2Flavor_extraSpecs(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckComputeV2FlavorDestroy,
+		CheckDestroy:      testAccCheckComputeV2FlavorDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccComputeV2FlavorExtraSpecs1(flavorName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckComputeV2FlavorExists("openstack_compute_flavor_v2.flavor_1", &flavor),
+					testAccCheckComputeV2FlavorExists(t.Context(), "openstack_compute_flavor_v2.flavor_1", &flavor),
 					resource.TestCheckResourceAttr(
 						"openstack_compute_flavor_v2.flavor_1", "description", "foo"),
 					resource.TestCheckResourceAttr(
@@ -84,7 +87,7 @@ func TestAccComputeV2Flavor_extraSpecs(t *testing.T) {
 			{
 				Config: testAccComputeV2FlavorExtraSpecs2(flavorName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckComputeV2FlavorExists("openstack_compute_flavor_v2.flavor_1", &flavor),
+					testAccCheckComputeV2FlavorExists(t.Context(), "openstack_compute_flavor_v2.flavor_1", &flavor),
 					resource.TestCheckResourceAttr(
 						"openstack_compute_flavor_v2.flavor_1", "description", "bar"),
 					resource.TestCheckResourceAttr(
@@ -97,28 +100,31 @@ func TestAccComputeV2Flavor_extraSpecs(t *testing.T) {
 	})
 }
 
-func testAccCheckComputeV2FlavorDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	computeClient, err := config.ComputeV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack compute client: %s", err)
-	}
+func testAccCheckComputeV2FlavorDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_compute_flavor_v2" {
-			continue
+		computeClient, err := config.ComputeV2Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack compute client: %w", err)
 		}
 
-		_, err := flavors.Get(computeClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("Flavor still exists")
-		}
-	}
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_compute_flavor_v2" {
+				continue
+			}
 
-	return nil
+			_, err := flavors.Get(ctx, computeClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return errors.New("Flavor still exists")
+			}
+		}
+
+		return nil
+	}
 }
 
-func testAccCheckComputeV2FlavorExists(n string, flavor *flavors.Flavor) resource.TestCheckFunc {
+func testAccCheckComputeV2FlavorExists(ctx context.Context, n string, flavor *flavors.Flavor) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -126,22 +132,23 @@ func testAccCheckComputeV2FlavorExists(n string, flavor *flavors.Flavor) resourc
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		computeClient, err := config.ComputeV2Client(osRegionName)
+
+		computeClient, err := config.ComputeV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack compute client: %s", err)
+			return fmt.Errorf("Error creating OpenStack compute client: %w", err)
 		}
 
-		found, err := flavors.Get(computeClient, rs.Primary.ID).Extract()
+		found, err := flavors.Get(ctx, computeClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Flavor not found")
+			return errors.New("Flavor not found")
 		}
 
 		*flavor = *found
@@ -177,6 +184,7 @@ func testAccComputeV2FlavorBasicWithID(flavorName string) string {
     }
     `, flavorName)
 }
+
 func testAccComputeV2FlavorExtraSpecs1(flavorName string) string {
 	return fmt.Sprintf(`
     resource "openstack_compute_flavor_v2" "flavor_1" {

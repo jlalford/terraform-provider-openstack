@@ -1,14 +1,16 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/blockstorage/v3/volumes"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/blockstorage/v3/volumes"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccBlockStorageVolumeAttachV3_basic(t *testing.T) {
@@ -20,12 +22,12 @@ func TestAccBlockStorageVolumeAttachV3_basic(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckBlockStorageVolumeAttachV3Destroy,
+		CheckDestroy:      testAccCheckBlockStorageVolumeAttachV3Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBlockStorageVolumeAttachV3Basic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckBlockStorageVolumeAttachV3Exists("openstack_blockstorage_volume_attach_v3.va_1", &va),
+					testAccCheckBlockStorageVolumeAttachV3Exists(t.Context(), "openstack_blockstorage_volume_attach_v3.va_1", &va),
 				),
 			},
 		},
@@ -41,54 +43,58 @@ func TestAccBlockStorageVolumeAttachV3_timeout(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckBlockStorageVolumeAttachV3Destroy,
+		CheckDestroy:      testAccCheckBlockStorageVolumeAttachV3Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBlockStorageVolumeAttachV3Timeout,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckBlockStorageVolumeAttachV3Exists("openstack_blockstorage_volume_attach_v3.va_1", &va),
+					testAccCheckBlockStorageVolumeAttachV3Exists(t.Context(), "openstack_blockstorage_volume_attach_v3.va_1", &va),
 				),
 			},
 		},
 	})
 }
 
-func testAccCheckBlockStorageVolumeAttachV3Destroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	client, err := config.BlockStorageV3Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack block storage client: %s", err)
-	}
+func testAccCheckBlockStorageVolumeAttachV3Destroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_blockstorage_volume_attach_v3" {
-			continue
-		}
-
-		volumeID, attachmentID, err := blockStorageVolumeAttachV3ParseID(rs.Primary.ID)
+		client, err := config.BlockStorageV3Client(ctx, osRegionName)
 		if err != nil {
-			return err
+			return fmt.Errorf("Error creating OpenStack block storage client: %w", err)
 		}
 
-		volume, err := volumes.Get(client, volumeID).Extract()
-		if err != nil {
-			if _, ok := err.(gophercloud.ErrDefault404); ok {
-				return nil
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_blockstorage_volume_attach_v3" {
+				continue
 			}
-			return err
+
+			volumeID, attachmentID, err := parsePairedIDs(rs.Primary.ID, "openstack_blockstorage_volume_attach_v3")
+			if err != nil {
+				return err
+			}
+
+			volume, err := volumes.Get(ctx, client, volumeID).Extract()
+			if err != nil {
+				if gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
+					return nil
+				}
+
+				return err
+			}
+
+			for _, v := range volume.Attachments {
+				if attachmentID == v.AttachmentID {
+					return errors.New("Volume attachment still exists")
+				}
+			}
 		}
 
-		for _, v := range volume.Attachments {
-			if attachmentID == v.AttachmentID {
-				return fmt.Errorf("Volume attachment still exists")
-			}
-		}
+		return nil
 	}
-
-	return nil
 }
 
-func testAccCheckBlockStorageVolumeAttachV3Exists(n string, va *volumes.Attachment) resource.TestCheckFunc {
+func testAccCheckBlockStorageVolumeAttachV3Exists(ctx context.Context, n string, va *volumes.Attachment) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -96,26 +102,28 @@ func testAccCheckBlockStorageVolumeAttachV3Exists(n string, va *volumes.Attachme
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		client, err := config.BlockStorageV3Client(osRegionName)
+
+		client, err := config.BlockStorageV3Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack block storage client: %s", err)
+			return fmt.Errorf("Error creating OpenStack block storage client: %w", err)
 		}
 
-		volumeID, attachmentID, err := blockStorageVolumeAttachV3ParseID(rs.Primary.ID)
+		volumeID, attachmentID, err := parsePairedIDs(rs.Primary.ID, "openstack_blockstorage_volume_attach_v3")
 		if err != nil {
 			return err
 		}
 
-		volume, err := volumes.Get(client, volumeID).Extract()
+		volume, err := volumes.Get(ctx, client, volumeID).Extract()
 		if err != nil {
 			return err
 		}
 
 		var found bool
+
 		for _, v := range volume.Attachments {
 			if attachmentID == v.AttachmentID {
 				found = true
@@ -124,7 +132,7 @@ func testAccCheckBlockStorageVolumeAttachV3Exists(n string, va *volumes.Attachme
 		}
 
 		if !found {
-			return fmt.Errorf("Volume Attachment not found")
+			return errors.New("Volume Attachment not found")
 		}
 
 		return nil
@@ -138,7 +146,7 @@ resource "openstack_blockstorage_volume_v3" "volume_1" {
 }
 
 resource "openstack_blockstorage_volume_attach_v3" "va_1" {
-  volume_id = "${openstack_blockstorage_volume_v3.volume_1.id}"
+  volume_id = openstack_blockstorage_volume_v3.volume_1.id
   device = "auto"
 
   host_name = "devstack"
@@ -156,7 +164,7 @@ resource "openstack_blockstorage_volume_v3" "volume_1" {
 }
 
 resource "openstack_blockstorage_volume_attach_v3" "va_1" {
-  volume_id = "${openstack_blockstorage_volume_v3.volume_1.id}"
+  volume_id = openstack_blockstorage_volume_v3.volume_1.id
   device = "auto"
 
   host_name = "devstack"

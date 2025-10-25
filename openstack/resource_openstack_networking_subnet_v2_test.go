@@ -1,13 +1,14 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/subnets"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccNetworkingV2Subnet_basic(t *testing.T) {
@@ -19,12 +20,12 @@ func TestAccNetworkingV2Subnet_basic(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SubnetBasic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SubnetExists("openstack_networking_subnet_v2.subnet_1", &subnet),
+					testAccCheckNetworkingV2SubnetExists(t.Context(), "openstack_networking_subnet_v2.subnet_1", &subnet),
 					testAccCheckNetworkingV2SubnetDNSConsistency("openstack_networking_subnet_v2.subnet_1", &subnet),
 					resource.TestCheckResourceAttr(
 						"openstack_networking_subnet_v2.subnet_1", "allocation_pool.0.start", "192.168.199.100"),
@@ -60,12 +61,12 @@ func TestAccNetworkingV2Subnet_enableDHCP(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SubnetEnableDhcp,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SubnetExists("openstack_networking_subnet_v2.subnet_1", &subnet),
+					testAccCheckNetworkingV2SubnetExists(t.Context(), "openstack_networking_subnet_v2.subnet_1", &subnet),
 					resource.TestCheckResourceAttr(
 						"openstack_networking_subnet_v2.subnet_1", "enable_dhcp", "true"),
 				),
@@ -83,12 +84,12 @@ func TestAccNetworkingV2Subnet_disableDHCP(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SubnetDisableDhcp,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SubnetExists("openstack_networking_subnet_v2.subnet_1", &subnet),
+					testAccCheckNetworkingV2SubnetExists(t.Context(), "openstack_networking_subnet_v2.subnet_1", &subnet),
 					resource.TestCheckResourceAttr(
 						"openstack_networking_subnet_v2.subnet_1", "enable_dhcp", "false"),
 				),
@@ -106,12 +107,12 @@ func TestAccNetworkingV2Subnet_noGateway(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SubnetNoGateway,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SubnetExists("openstack_networking_subnet_v2.subnet_1", &subnet),
+					testAccCheckNetworkingV2SubnetExists(t.Context(), "openstack_networking_subnet_v2.subnet_1", &subnet),
 					resource.TestCheckResourceAttr(
 						"openstack_networking_subnet_v2.subnet_1", "gateway_ip", ""),
 				),
@@ -129,12 +130,12 @@ func TestAccNetworkingV2Subnet_impliedGateway(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SubnetImpliedGateway,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SubnetExists("openstack_networking_subnet_v2.subnet_1", &subnet),
+					testAccCheckNetworkingV2SubnetExists(t.Context(), "openstack_networking_subnet_v2.subnet_1", &subnet),
 					resource.TestCheckResourceAttr(
 						"openstack_networking_subnet_v2.subnet_1", "gateway_ip", "192.168.199.1"),
 				),
@@ -152,12 +153,12 @@ func TestAccNetworkingV2Subnet_timeout(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SubnetTimeout,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SubnetExists("openstack_networking_subnet_v2.subnet_1", &subnet),
+					testAccCheckNetworkingV2SubnetExists(t.Context(), "openstack_networking_subnet_v2.subnet_1", &subnet),
 				),
 			},
 		},
@@ -173,12 +174,12 @@ func TestAccNetworkingV2Subnet_subnetPool(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SubnetPool,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SubnetExists("openstack_networking_subnet_v2.subnet_1", &subnet),
+					testAccCheckNetworkingV2SubnetExists(t.Context(), "openstack_networking_subnet_v2.subnet_1", &subnet),
 				),
 			},
 		},
@@ -194,12 +195,12 @@ func TestAccNetworkingV2Subnet_subnetPoolNoCIDR(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SubnetPoolNoCIDR,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SubnetExists("openstack_networking_subnet_v2.subnet_1", &subnet),
+					testAccCheckNetworkingV2SubnetExists(t.Context(), "openstack_networking_subnet_v2.subnet_1", &subnet),
 				),
 			},
 		},
@@ -215,13 +216,13 @@ func TestAccNetworkingV2Subnet_subnetPrefixLength(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SubnetPrefixLength,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SubnetExists("openstack_networking_subnet_v2.subnet_1", &subnet[0]),
-					testAccCheckNetworkingV2SubnetExists("openstack_networking_subnet_v2.subnet_2", &subnet[1]),
+					testAccCheckNetworkingV2SubnetExists(t.Context(), "openstack_networking_subnet_v2.subnet_1", &subnet[0]),
+					testAccCheckNetworkingV2SubnetExists(t.Context(), "openstack_networking_subnet_v2.subnet_2", &subnet[1]),
 					resource.TestCheckResourceAttr(
 						"openstack_networking_subnet_v2.subnet_1", "prefix_length", "27"),
 					resource.TestCheckResourceAttr(
@@ -239,7 +240,7 @@ func TestAccNetworkingV2Subnet_multipleAllocationPools(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SubnetMultipleAllocationPools1,
@@ -267,14 +268,14 @@ func TestAccNetworkingV2Subnet_multipleAllocationPools(t *testing.T) {
 }
 
 // NOTE: disabled since Terraform SDK V2 currently does not support indexes into TypeSet.
-//func TestAccNetworkingV2Subnet_allocationPool(t *testing.T) {
+// func TestAccNetworkingV2Subnet_allocationPool(t *testing.T) {
 //	resource.Test(t, resource.TestCase{
 //		PreCheck: func() {
 //			testAccPreCheck(t)
 //			testAccPreCheckNonAdminOnly(t)
 //		},
 //		ProviderFactories: testAccProviders,
-//		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy,
+//		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy(t.Context()),
 //		Steps: []resource.TestStep{
 //			{
 //				Config: testAccNetworkingV2SubnetAllocationPool1,
@@ -315,12 +316,12 @@ func TestAccNetworkingV2Subnet_clearDNSNameservers(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SubnetClearDNSNameservers1,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SubnetExists("openstack_networking_subnet_v2.subnet_1", &subnet),
+					testAccCheckNetworkingV2SubnetExists(t.Context(), "openstack_networking_subnet_v2.subnet_1", &subnet),
 					testAccCheckNetworkingV2SubnetDNSConsistency("openstack_networking_subnet_v2.subnet_1", &subnet),
 					resource.TestCheckResourceAttr(
 						"openstack_networking_subnet_v2.subnet_1", "dns_nameservers.#", "2"),
@@ -346,12 +347,12 @@ func TestAccNetworkingV2Subnet_ServiceTypes(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SubnetDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SubnetServiceTypes,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SubnetExists("openstack_networking_subnet_v2.subnet_1", &subnet),
+					testAccCheckNetworkingV2SubnetExists(t.Context(), "openstack_networking_subnet_v2.subnet_1", &subnet),
 					testAccCheckNetworkingV2SubnetDNSConsistency("openstack_networking_subnet_v2.subnet_1", &subnet),
 					resource.TestCheckResourceAttr(
 						"openstack_networking_subnet_v2.subnet_1", "service_types.#", "1"),
@@ -368,28 +369,31 @@ func TestAccNetworkingV2Subnet_ServiceTypes(t *testing.T) {
 	})
 }
 
-func testAccCheckNetworkingV2SubnetDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	networkingClient, err := config.NetworkingV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack networking client: %s", err)
-	}
+func testAccCheckNetworkingV2SubnetDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_networking_subnet_v2" {
-			continue
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
 		}
 
-		_, err := subnets.Get(networkingClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("Subnet still exists")
-		}
-	}
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_networking_subnet_v2" {
+				continue
+			}
 
-	return nil
+			_, err := subnets.Get(ctx, networkingClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return errors.New("Subnet still exists")
+			}
+		}
+
+		return nil
+	}
 }
 
-func testAccCheckNetworkingV2SubnetExists(n string, subnet *subnets.Subnet) resource.TestCheckFunc {
+func testAccCheckNetworkingV2SubnetExists(ctx context.Context, n string, subnet *subnets.Subnet) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -397,22 +401,23 @@ func testAccCheckNetworkingV2SubnetExists(n string, subnet *subnets.Subnet) reso
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		networkingClient, err := config.NetworkingV2Client(osRegionName)
+
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack networking client: %s", err)
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
 		}
 
-		found, err := subnets.Get(networkingClient, rs.Primary.ID).Extract()
+		found, err := subnets.Get(ctx, networkingClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Subnet not found")
+			return errors.New("Subnet not found")
 		}
 
 		*subnet = *found
@@ -429,12 +434,12 @@ func testAccCheckNetworkingV2SubnetDNSConsistency(n string, subnet *subnets.Subn
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		for i, dns := range subnet.DNSNameservers {
 			if dns != rs.Primary.Attributes[fmt.Sprintf("dns_nameservers.%d", i)] {
-				return fmt.Errorf("Dns Nameservers list elements or order is not consistent")
+				return errors.New("Dns Nameservers list elements or order is not consistent")
 			}
 		}
 
@@ -451,7 +456,7 @@ resource "openstack_networking_network_v2" "network_1" {
 resource "openstack_networking_subnet_v2" "subnet_1" {
   description = "my subnet description"
   cidr = "192.168.199.0/24"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 
   dns_nameservers = ["10.0.16.4", "213.186.33.99"]
 
@@ -472,7 +477,7 @@ resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
   cidr = "192.168.199.0/24"
   gateway_ip = "192.168.199.1"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 
   dns_nameservers = ["10.0.16.4", "213.186.33.99"]
 
@@ -494,7 +499,7 @@ resource "openstack_networking_subnet_v2" "subnet_1" {
   cidr = "192.168.199.0/24"
   gateway_ip = "192.168.199.1"
   enable_dhcp = true
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 }
 `
 
@@ -508,7 +513,7 @@ resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
   cidr = "192.168.199.0/24"
   enable_dhcp = false
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 }
 `
 
@@ -522,7 +527,7 @@ resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
   cidr = "192.168.199.0/24"
   no_gateway = true
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 }
 `
 
@@ -534,7 +539,7 @@ resource "openstack_networking_network_v2" "network_1" {
 resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
   cidr = "192.168.199.0/24"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 }
 `
 
@@ -546,7 +551,7 @@ resource "openstack_networking_network_v2" "network_1" {
 
 resource "openstack_networking_subnet_v2" "subnet_1" {
   cidr = "192.168.199.0/24"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 
   allocation_pool {
     start = "192.168.199.100"
@@ -575,8 +580,8 @@ resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
   cidr = "10.11.12.0/25"
   no_gateway = true
-	network_id = "${openstack_networking_network_v2.network_1.id}"
-	subnetpool_id = "${openstack_networking_subnetpool_v2.subnetpool_1.id}"
+	network_id = openstack_networking_network_v2.network_1.id
+	subnetpool_id = openstack_networking_subnetpool_v2.subnetpool_1.id
 }
 `
 
@@ -594,8 +599,8 @@ resource "openstack_networking_subnetpool_v2" "subnetpool_1" {
 
 resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
-	network_id = "${openstack_networking_network_v2.network_1.id}"
-	subnetpool_id = "${openstack_networking_subnetpool_v2.subnetpool_1.id}"
+	network_id = openstack_networking_network_v2.network_1.id
+	subnetpool_id = openstack_networking_subnetpool_v2.subnetpool_1.id
 }
 `
 
@@ -614,16 +619,16 @@ resource "openstack_networking_subnet_v2" "subnet_1" {
   name          = "subnet_1"
   prefix_length = 27
   enable_dhcp   = false
-  network_id    = "${openstack_networking_network_v2.network_1.id}"
-  subnetpool_id = "${openstack_networking_subnetpool_v2.subnetpool_1.id}"
+  network_id    = openstack_networking_network_v2.network_1.id
+  subnetpool_id = openstack_networking_subnetpool_v2.subnetpool_1.id
 }
 
 resource "openstack_networking_subnet_v2" "subnet_2" {
   name          = "subnet_2"
   prefix_length = 32
   enable_dhcp   = false
-  network_id    = "${openstack_networking_network_v2.network_1.id}"
-  subnetpool_id = "${openstack_networking_subnetpool_v2.subnetpool_1.id}"
+  network_id    = openstack_networking_network_v2.network_1.id
+  subnetpool_id = openstack_networking_subnetpool_v2.subnetpool_1.id
 }
 `
 
@@ -636,7 +641,7 @@ resource "openstack_networking_network_v2" "network_1" {
 resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
   cidr = "10.3.0.0/16"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 
   allocation_pool {
     start = "10.3.0.2"
@@ -659,7 +664,7 @@ resource "openstack_networking_network_v2" "network_1" {
 resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
   cidr = "10.3.0.0/16"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 
   allocation_pool {
     start = "10.3.255.0"
@@ -682,7 +687,7 @@ resource "openstack_networking_network_v2" "network_1" {
 resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
   cidr = "10.3.0.0/16"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 
   allocation_pool {
     start = "10.3.255.10"
@@ -696,16 +701,16 @@ resource "openstack_networking_subnet_v2" "subnet_1" {
 }
 `
 
-//const testAccNetworkingV2SubnetAllocationPool1 = `
-//resource "openstack_networking_network_v2" "network_1" {
+// const testAccNetworkingV2SubnetAllocationPool1 = `
+// resource "openstack_networking_network_v2" "network_1" {
 //  name = "network_1"
 //  admin_state_up = "true"
 //}
 //
-//resource "openstack_networking_subnet_v2" "subnet_1" {
+// resource "openstack_networking_subnet_v2" "subnet_1" {
 //  name = "subnet_1"
 //  cidr = "10.3.0.0/16"
-//  network_id = "${openstack_networking_network_v2.network_1.id}"
+//  network_id = openstack_networking_network_v2.network_1.id
 //
 //  allocation_pool {
 //    start = "10.3.0.2"
@@ -719,16 +724,16 @@ resource "openstack_networking_subnet_v2" "subnet_1" {
 //}
 //`
 //
-//const testAccNetworkingV2SubnetAllocationPool2 = `
-//resource "openstack_networking_network_v2" "network_1" {
+// const testAccNetworkingV2SubnetAllocationPool2 = `
+// resource "openstack_networking_network_v2" "network_1" {
 //  name = "network_1"
 //  admin_state_up = "true"
 //}
 //
-//resource "openstack_networking_subnet_v2" "subnet_1" {
+// resource "openstack_networking_subnet_v2" "subnet_1" {
 //  name = "subnet_1"
 //  cidr = "10.3.0.0/16"
-//  network_id = "${openstack_networking_network_v2.network_1.id}"
+//  network_id = openstack_networking_network_v2.network_1.id
 //
 //  allocation_pool {
 //    start = "10.3.255.10"
@@ -750,7 +755,7 @@ resource "openstack_networking_network_v2" "network_1" {
 
 resource "openstack_networking_subnet_v2" "subnet_1" {
   cidr = "192.168.199.0/24"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 
   dns_nameservers = ["10.0.16.4", "213.186.33.99"]
 
@@ -770,7 +775,7 @@ resource "openstack_networking_network_v2" "network_1" {
 resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
   cidr = "192.168.199.0/24"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 
   allocation_pool {
     start = "192.168.199.100"
@@ -788,7 +793,7 @@ resource "openstack_networking_network_v2" "network_1" {
 resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
   cidr = "192.168.199.0/24"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 
   service_types = ["network:distributed"]
 }
@@ -803,7 +808,7 @@ resource "openstack_networking_network_v2" "network_1" {
 resource "openstack_networking_subnet_v2" "subnet_1" {
   name = "subnet_1"
   cidr = "192.168.199.0/24"
-  network_id = "${openstack_networking_network_v2.network_1.id}"
+  network_id = openstack_networking_network_v2.network_1.id
 
   service_types = []
 }

@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/quotasets"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/quotasets"
 )
 
 func dataSourceComputeQuotasetV2() *schema.Resource {
@@ -101,17 +100,18 @@ func dataSourceComputeQuotasetV2() *schema.Resource {
 	}
 }
 
-func dataSourceComputeQuotasetV2Read(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func dataSourceComputeQuotasetV2Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
 	region := GetRegion(d, config)
-	computeClient, err := config.ComputeV2Client(region)
+
+	computeClient, err := config.ComputeV2Client(ctx, region)
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack compute client: %s", err)
 	}
 
 	projectID := d.Get("project_id").(string)
 
-	q, err := quotasets.Get(computeClient, projectID).Extract()
+	q, err := quotasets.Get(ctx, computeClient, projectID).Extract()
 	if err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "Error retrieving openstack_compute_quotaset_v2"))
 	}

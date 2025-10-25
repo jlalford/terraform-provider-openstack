@@ -1,13 +1,14 @@
 package openstack
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"net/http"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/dns/v2/transfer/accept"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/dns/v2/transfer/accept"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 )
 
 // TransferAcceptCreateOpts represents the attributes used when creating a new transfer accept.
@@ -18,24 +19,24 @@ type TransferAcceptCreateOpts struct {
 
 // ToTransferAcceptCreateMap casts a CreateOpts struct to a map.
 // It overrides accept.ToTransferAcceptCreateMap to add the ValueSpecs field.
-func (opts TransferAcceptCreateOpts) ToTransferAcceptCreateMap() (map[string]interface{}, error) {
+func (opts TransferAcceptCreateOpts) ToTransferAcceptCreateMap() (map[string]any, error) {
 	b, err := BuildRequest(opts, "")
 	if err != nil {
 		return nil, err
 	}
 
-	if m, ok := b[""].(map[string]interface{}); ok {
+	if m, ok := b[""].(map[string]any); ok {
 		return m, nil
 	}
 
 	return nil, fmt.Errorf("Expected map but got %T", b[""])
 }
 
-func dnsTransferAcceptV2RefreshFunc(dnsClient *gophercloud.ServiceClient, transferAcceptID string) resource.StateRefreshFunc {
-	return func() (interface{}, string, error) {
-		transferAccept, err := accept.Get(dnsClient, transferAcceptID).Extract()
+func dnsTransferAcceptV2RefreshFunc(ctx context.Context, dnsClient *gophercloud.ServiceClient, transferAcceptID string) retry.StateRefreshFunc {
+	return func() (any, string, error) {
+		transferAccept, err := accept.Get(ctx, dnsClient, transferAcceptID).Extract()
 		if err != nil {
-			if _, ok := err.(gophercloud.ErrDefault404); ok {
+			if gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
 				return transferAccept, "DELETED", nil
 			}
 
@@ -43,6 +44,7 @@ func dnsTransferAcceptV2RefreshFunc(dnsClient *gophercloud.ServiceClient, transf
 		}
 
 		log.Printf("[DEBUG] openstack_dns_transfer_accept_v2 %s current status: %s", transferAccept.ID, transferAccept.Status)
+
 		return transferAccept, transferAccept.Status, nil
 	}
 }

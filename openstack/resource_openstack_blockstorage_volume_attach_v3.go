@@ -6,13 +6,11 @@ import (
 	"log"
 	"time"
 
+	"github.com/gophercloud/gophercloud/v2/openstack/blockstorage/v3/volumes"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-
-	"github.com/gophercloud/gophercloud/openstack/blockstorage/extensions/volumeactions"
-	"github.com/gophercloud/gophercloud/openstack/blockstorage/v3/volumes"
 )
 
 func resourceBlockStorageVolumeAttachV3() *schema.Resource {
@@ -124,16 +122,18 @@ func resourceBlockStorageVolumeAttachV3() *schema.Resource {
 	}
 }
 
-func resourceBlockStorageVolumeAttachV3Create(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceBlockStorageVolumeAttachV3Create(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	client, err := config.BlockStorageV3Client(GetRegion(d, config))
+
+	client, err := config.BlockStorageV3Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack block storage client: %s", err)
 	}
 
 	// initialize the connection
 	volumeID := d.Get("volume_id").(string)
-	connOpts := &volumeactions.InitializeConnectionOpts{}
+
+	connOpts := &volumes.InitializeConnectionOpts{}
 	if v, ok := d.GetOk("host_name"); ok {
 		connOpts.Host = v.(string)
 	}
@@ -170,7 +170,7 @@ func resourceBlockStorageVolumeAttachV3Create(ctx context.Context, d *schema.Res
 		connOpts.Wwpns = wwpns
 	}
 
-	connInfo, err := volumeactions.InitializeConnection(client, volumeID, connOpts).Extract()
+	connInfo, err := volumes.InitializeConnection(ctx, client, volumeID, connOpts).Extract()
 	if err != nil {
 		return diag.Errorf(
 			"Unable to initialize connection for openstack_blockstorage_volume_attach_v3: %s", err)
@@ -183,7 +183,8 @@ func resourceBlockStorageVolumeAttachV3Create(ctx context.Context, d *schema.Res
 	// it must be set in Create.
 	if v, ok := connInfo["data"]; ok {
 		data := make(map[string]string)
-		for key, value := range v.(map[string]interface{}) {
+
+		for key, value := range v.(map[string]any) {
 			if v, ok := value.(string); ok {
 				data[key] = v
 			}
@@ -206,7 +207,7 @@ func resourceBlockStorageVolumeAttachV3Create(ctx context.Context, d *schema.Res
 		return nil
 	}
 
-	attachOpts := &volumeactions.AttachOpts{
+	attachOpts := &volumes.AttachOpts{
 		HostName:   d.Get("host_name").(string),
 		MountPoint: d.Get("device").(string),
 		Mode:       attachMode,
@@ -214,7 +215,7 @@ func resourceBlockStorageVolumeAttachV3Create(ctx context.Context, d *schema.Res
 
 	log.Printf("[DEBUG] openstack_blockstorage_volume_attach_v3 attach options: %#v", attachOpts)
 
-	if err := volumeactions.Attach(client, volumeID, attachOpts).ExtractErr(); err != nil {
+	if err := volumes.Attach(ctx, client, volumeID, attachOpts).ExtractErr(); err != nil {
 		return diag.Errorf(
 			"Error attaching openstack_blockstorage_volume_attach_v3 for volume %s: %s", volumeID, err)
 	}
@@ -223,12 +224,12 @@ func resourceBlockStorageVolumeAttachV3Create(ctx context.Context, d *schema.Res
 	log.Printf(
 		"[DEBUG] Waiting for openstack_blockstorage_volume_attach_v3 volume %s to become available", volumeID)
 
-	stateConf := &resource.StateChangeConf{
+	stateConf := &retry.StateChangeConf{
 		Pending:    []string{"available", "attaching"},
 		Target:     []string{"in-use"},
-		Refresh:    blockStorageVolumeV3StateRefreshFunc(client, volumeID),
+		Refresh:    blockStorageVolumeV3StateRefreshFunc(ctx, client, volumeID),
 		Timeout:    d.Timeout(schema.TimeoutCreate),
-		Delay:      10 * time.Second,
+		Delay:      0,
 		MinTimeout: 3 * time.Second,
 	}
 
@@ -240,7 +241,7 @@ func resourceBlockStorageVolumeAttachV3Create(ctx context.Context, d *schema.Res
 
 	// Once the volume has been marked as attached,
 	// retrieve a fresh copy of it with all information now available.
-	volume, err := volumes.Get(client, volumeID).Extract()
+	volume, err := volumes.Get(ctx, client, volumeID).Extract()
 	if err != nil {
 		return diag.Errorf(
 			"Unable to retrieve openstack_blockstorage_volume_attach_v3 volume %s: %s", volumeID, err)
@@ -248,6 +249,7 @@ func resourceBlockStorageVolumeAttachV3Create(ctx context.Context, d *schema.Res
 
 	// Search for the attachmentID
 	var attachmentID string
+
 	hostName := d.Get("host_name").(string)
 	for _, attachment := range volume.Attachments {
 		if hostName != "" && hostName == attachment.HostName {
@@ -268,19 +270,20 @@ func resourceBlockStorageVolumeAttachV3Create(ctx context.Context, d *schema.Res
 	return resourceBlockStorageVolumeAttachV3Read(ctx, d, meta)
 }
 
-func resourceBlockStorageVolumeAttachV3Read(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceBlockStorageVolumeAttachV3Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	client, err := config.BlockStorageV3Client(GetRegion(d, config))
+
+	client, err := config.BlockStorageV3Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack block storage client: %s", err)
 	}
 
-	volumeID, attachmentID, err := blockStorageVolumeAttachV3ParseID(d.Id())
+	volumeID, attachmentID, err := parsePairedIDs(d.Id(), "openstack_blockstorage_volume_attach_v3")
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	volume, err := volumes.Get(client, volumeID).Extract()
+	volume, err := volumes.Get(ctx, client, volumeID).Extract()
 	if err != nil {
 		return diag.Errorf(
 			"Unable to retrieve openstack_blockstorage_volume_attach_v3 volume %s: %s", volumeID, err)
@@ -289,11 +292,14 @@ func resourceBlockStorageVolumeAttachV3Read(_ context.Context, d *schema.Resourc
 	log.Printf("[DEBUG] Retrieved openstack_blockstorage_volume_attach_v3 volume %s: %#v", volumeID, volume)
 
 	var attachment volumes.Attachment
+
 	for _, v := range volume.Attachments {
 		if attachmentID == v.AttachmentID {
 			attachment = v
 		}
 	}
+
+	d.Set("region", GetRegion(d, config))
 
 	log.Printf(
 		"[DEBUG] Retrieved openstack_blockstorage_volume_attach_v3 attachment %s: %#v", d.Id(), attachment)
@@ -301,20 +307,21 @@ func resourceBlockStorageVolumeAttachV3Read(_ context.Context, d *schema.Resourc
 	return nil
 }
 
-func resourceBlockStorageVolumeAttachV3Delete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceBlockStorageVolumeAttachV3Delete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	client, err := config.BlockStorageV3Client(GetRegion(d, config))
+
+	client, err := config.BlockStorageV3Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack block storage client: %s", err)
 	}
 
-	volumeID, attachmentID, err := blockStorageVolumeAttachV3ParseID(d.Id())
+	volumeID, attachmentID, err := parsePairedIDs(d.Id(), "openstack_blockstorage_volume_attach_v3")
 	if err != nil {
-		return diag.Errorf("Error parsing openstack_blockstorage_volume_attach_v3: %s", err)
+		return diag.FromErr(err)
 	}
 
 	// Terminate the connection
-	termOpts := &volumeactions.TerminateConnectionOpts{}
+	termOpts := &volumes.TerminateConnectionOpts{}
 	if v, ok := d.GetOk("host_name"); ok {
 		termOpts.Host = v.(string)
 	}
@@ -350,30 +357,30 @@ func resourceBlockStorageVolumeAttachV3Delete(ctx context.Context, d *schema.Res
 		termOpts.Wwpns = wwpns
 	}
 
-	err = volumeactions.TerminateConnection(client, volumeID, termOpts).ExtractErr()
+	err = volumes.TerminateConnection(ctx, client, volumeID, termOpts).ExtractErr()
 	if err != nil {
 		return diag.Errorf(
 			"Error terminating openstack_blockstorage_volume_attach_v3 connection %s: %s", d.Id(), err)
 	}
 
 	// Detach the volume
-	detachOpts := volumeactions.DetachOpts{
+	detachOpts := volumes.DetachOpts{
 		AttachmentID: attachmentID,
 	}
 
 	log.Printf(
 		"[DEBUG] openstack_blockstorage_volume_attach_v3 detachment options %s: %#v", d.Id(), detachOpts)
 
-	if err := volumeactions.Detach(client, volumeID, detachOpts).ExtractErr(); err != nil {
+	if err := volumes.Detach(ctx, client, volumeID, detachOpts).ExtractErr(); err != nil {
 		return diag.FromErr(err)
 	}
 
-	stateConf := &resource.StateChangeConf{
+	stateConf := &retry.StateChangeConf{
 		Pending:    []string{"in-use", "attaching", "detaching"},
 		Target:     []string{"available"},
-		Refresh:    blockStorageVolumeV3StateRefreshFunc(client, volumeID),
+		Refresh:    blockStorageVolumeV3StateRefreshFunc(ctx, client, volumeID),
 		Timeout:    d.Timeout(schema.TimeoutDelete),
-		Delay:      10 * time.Second,
+		Delay:      0,
 		MinTimeout: 3 * time.Second,
 	}
 

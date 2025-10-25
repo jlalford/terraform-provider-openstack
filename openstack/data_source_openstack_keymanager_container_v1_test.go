@@ -3,7 +3,7 @@ package openstack
 import (
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestAccKeyManagerContainerV1DataSource_basic(t *testing.T) {
@@ -13,7 +13,7 @@ func TestAccKeyManagerContainerV1DataSource_basic(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckContainerV1Destroy,
+		CheckDestroy:      testAccCheckContainerV1Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccKeyManagerContainerV1DataSourceBasic,
@@ -39,7 +39,7 @@ func TestAccKeyManagerContainerV1DataSource_acls(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckContainerV1Destroy,
+		CheckDestroy:      testAccCheckContainerV1Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccKeyManagerContainerV1DataSourceAcls,
@@ -88,22 +88,22 @@ resource "openstack_keymanager_container_v1" "container_1" {
 
   secret_refs {
     name       = "certificate"
-    secret_ref = "${openstack_keymanager_secret_v1.certificate_1.secret_ref}"
+    secret_ref = openstack_keymanager_secret_v1.certificate_1.secret_ref
   }
 
   secret_refs {
     name       = "private_key"
-    secret_ref = "${openstack_keymanager_secret_v1.private_key_1.secret_ref}"
+    secret_ref = openstack_keymanager_secret_v1.private_key_1.secret_ref
   }
 
   secret_refs {
     name       = "intermediate"
-    secret_ref = "${openstack_keymanager_secret_v1.intermediate_1.secret_ref}"
+    secret_ref = openstack_keymanager_secret_v1.intermediate_1.secret_ref
   }
 }
 
 data "openstack_keymanager_container_v1" "container_1" {
-  name = "${openstack_keymanager_container_v1.container_1.name}"
+  name = openstack_keymanager_container_v1.container_1.name
 }
 `
 
@@ -135,17 +135,17 @@ resource "openstack_keymanager_container_v1" "container_1" {
 
   secret_refs {
     name       = "certificate"
-    secret_ref = "${openstack_keymanager_secret_v1.certificate_1.secret_ref}"
+    secret_ref = openstack_keymanager_secret_v1.certificate_1.secret_ref
   }
 
   secret_refs {
     name       = "private_key"
-    secret_ref = "${openstack_keymanager_secret_v1.private_key_1.secret_ref}"
+    secret_ref = openstack_keymanager_secret_v1.private_key_1.secret_ref
   }
 
   secret_refs {
     name       = "intermediate"
-    secret_ref = "${openstack_keymanager_secret_v1.intermediate_1.secret_ref}"
+    secret_ref = openstack_keymanager_secret_v1.intermediate_1.secret_ref
   }
 
   acl {
@@ -160,6 +160,6 @@ resource "openstack_keymanager_container_v1" "container_1" {
 }
 
 data "openstack_keymanager_container_v1" "container_1" {
-  name = "${openstack_keymanager_container_v1.container_1.name}"
+  name = openstack_keymanager_container_v1.container_1.name
 }
 `

@@ -1,14 +1,15 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/containerinfra/v1/clustertemplates"
+	"github.com/gophercloud/gophercloud/v2/openstack/containerinfra/v1/clustertemplates"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccContainerInfraV1ClusterTemplate_basic(t *testing.T) {
@@ -24,12 +25,12 @@ func TestAccContainerInfraV1ClusterTemplate_basic(t *testing.T) {
 			testAccPreCheckContainerInfra(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckContainerInfraV1ClusterTemplateDestroy,
+		CheckDestroy:      testAccCheckContainerInfraV1ClusterTemplateDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccContainerInfraV1ClusterTemplateBasic(clusterTemplateName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckContainerInfraV1ClusterTemplateExists(resourceName, &clusterTemplate),
+					testAccCheckContainerInfraV1ClusterTemplateExists(t.Context(), resourceName, &clusterTemplate),
 					resource.TestCheckResourceAttr(resourceName, "region", osRegionName),
 					resource.TestCheckResourceAttr(resourceName, "name", clusterTemplateName),
 					resource.TestCheckResourceAttrSet(resourceName, "project_id"),
@@ -106,14 +107,14 @@ func TestAccContainerInfraV1ClusterTemplate_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "server_type", "vm"),
 					resource.TestCheckResourceAttr(resourceName, "tls_disabled", "true"),
 					resource.TestCheckResourceAttr(resourceName, "volume_driver", "cinder"),
-					resource.TestCheckResourceAttr(resourceName, "hidden", "true"),
+					resource.TestCheckResourceAttr(resourceName, "hidden", "false"),
 				),
 			},
 		},
 	})
 }
 
-func testAccCheckContainerInfraV1ClusterTemplateExists(n string, clustertemplate *clustertemplates.ClusterTemplate) resource.TestCheckFunc {
+func testAccCheckContainerInfraV1ClusterTemplateExists(ctx context.Context, n string, clustertemplate *clustertemplates.ClusterTemplate) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -121,22 +122,23 @@ func testAccCheckContainerInfraV1ClusterTemplateExists(n string, clustertemplate
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		containerInfraClient, err := config.ContainerInfraV1Client(osRegionName)
+
+		containerInfraClient, err := config.ContainerInfraV1Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack container infra client: %s", err)
+			return fmt.Errorf("Error creating OpenStack container infra client: %w", err)
 		}
 
-		found, err := clustertemplates.Get(containerInfraClient, rs.Primary.ID).Extract()
+		found, err := clustertemplates.Get(ctx, containerInfraClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.UUID != rs.Primary.ID {
-			return fmt.Errorf("Cluster template not found")
+			return errors.New("Cluster template not found")
 		}
 
 		*clustertemplate = *found
@@ -145,29 +147,74 @@ func testAccCheckContainerInfraV1ClusterTemplateExists(n string, clustertemplate
 	}
 }
 
-func testAccCheckContainerInfraV1ClusterTemplateDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	containerInfraClient, err := config.ContainerInfraV1Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack container infra client: %s", err)
-	}
+func testAccCheckContainerInfraV1ClusterTemplateDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_containerinfra_clustertemplate_v1" {
-			continue
+		containerInfraClient, err := config.ContainerInfraV1Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack container infra client: %w", err)
 		}
 
-		_, err := clustertemplates.Get(containerInfraClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("Cluster template still exists")
-		}
-	}
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_containerinfra_clustertemplate_v1" {
+				continue
+			}
 
-	return nil
+			_, err := clustertemplates.Get(ctx, containerInfraClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return errors.New("Cluster template still exists")
+			}
+		}
+
+		return nil
+	}
 }
 
 func testAccContainerInfraV1ClusterTemplateBasic(clusterTemplateName string) string {
 	return fmt.Sprintf(`
+resource "openstack_networking_router_v2" "router_1" {
+  name                = "my_router"
+  external_network_id = "%s"
+}
+
+resource "openstack_networking_router_interface_v2" "router_interface_1" {
+  router_id = openstack_networking_router_v2.router_1.id
+  subnet_id = openstack_networking_subnet_v2.cluster_subnet_1.id
+}
+
+resource "openstack_networking_network_v2" "cluster_network_1" {
+  name           = "cluster-network"
+  admin_state_up = "true"
+}
+
+resource "openstack_networking_subnet_v2" "cluster_subnet_1" {
+  name       = "cluster-network-subnet"
+  network_id = openstack_networking_network_v2.cluster_network_1.id
+  cidr       = "192.168.199.0/24"
+}
+
+resource "openstack_networking_router_v2" "router_2" {
+  name                = "my_router_2"
+  external_network_id = "%s"
+}
+
+resource "openstack_networking_router_interface_v2" "router_interface_2" {
+  router_id = openstack_networking_router_v2.router_2.id
+  subnet_id = openstack_networking_subnet_v2.cluster_subnet_2.id
+}
+
+resource "openstack_networking_network_v2" "cluster_network_2" {
+  name           = "cluster-network2"
+  admin_state_up = "true"
+}
+
+resource "openstack_networking_subnet_v2" "cluster_subnet_2" {
+  name       = "cluster-network2-subnet"
+  network_id = openstack_networking_network_v2.cluster_network_2.id
+  cidr       = "192.168.198.0/24"
+}
+
 resource "openstack_containerinfra_clustertemplate_v1" "clustertemplate_1" {
   region                = "%s"
   name                  = "%s"
@@ -177,8 +224,8 @@ resource "openstack_containerinfra_clustertemplate_v1" "clustertemplate_1" {
   docker_storage_driver = "overlay2"
   docker_volume_size    = 5
   external_network_id   = "%s"
-  fixed_network         = "cluster-network"
-  fixed_subnet          = "cluster-network-subnet"
+  fixed_network         = openstack_networking_network_v2.cluster_network_1.name
+  fixed_subnet          = openstack_networking_subnet_v2.cluster_subnet_1.name
   flavor                = "%s"
   master_flavor         = "%s"
   floating_ip_enabled   = true
@@ -202,11 +249,53 @@ resource "openstack_containerinfra_clustertemplate_v1" "clustertemplate_1" {
   volume_driver         = "cinder"
   hidden                = "false"
 }
-`, osRegionName, clusterTemplateName, osExtGwID, osMagnumFlavor, osMagnumFlavor, osMagnumHTTPProxy, osMagnumHTTPSProxy, osMagnumImage, osMagnumNoProxy)
+`, osExtGwID, osExtGwID, osRegionName, clusterTemplateName, osExtGwID, osMagnumFlavor, osMagnumFlavor, osMagnumHTTPProxy, osMagnumHTTPSProxy, osMagnumImage, osMagnumNoProxy)
 }
 
 func testAccContainerInfraV1ClusterTemplateUpdate(clusterTemplateName string) string {
 	return fmt.Sprintf(`
+resource "openstack_networking_router_v2" "router_1" {
+  name                = "my_router"
+  external_network_id = "%s"
+}
+
+resource "openstack_networking_router_interface_v2" "router_interface_1" {
+  router_id = openstack_networking_router_v2.router_1.id
+  subnet_id = openstack_networking_subnet_v2.cluster_subnet_1.id
+}
+
+resource "openstack_networking_network_v2" "cluster_network_1" {
+  name           = "cluster-network"
+  admin_state_up = "true"
+}
+
+resource "openstack_networking_subnet_v2" "cluster_subnet_1" {
+  name       = "cluster-network-subnet"
+  network_id = openstack_networking_network_v2.cluster_network_1.id
+  cidr       = "192.168.199.0/24"
+}
+
+resource "openstack_networking_router_v2" "router_2" {
+  name                = "my_router_2"
+  external_network_id = "%s"
+}
+
+resource "openstack_networking_router_interface_v2" "router_interface_2" {
+  router_id = openstack_networking_router_v2.router_2.id
+  subnet_id = openstack_networking_subnet_v2.cluster_subnet_2.id
+}
+
+resource "openstack_networking_network_v2" "cluster_network_2" {
+  name           = "cluster-network2"
+  admin_state_up = "true"
+}
+
+resource "openstack_networking_subnet_v2" "cluster_subnet_2" {
+  name       = "cluster-network2-subnet"
+  network_id = openstack_networking_network_v2.cluster_network_2.id
+  cidr       = "192.168.198.0/24"
+}
+
 resource "openstack_containerinfra_clustertemplate_v1" "clustertemplate_1" {
   region                = "%s"
   name                  = "%s-updated"
@@ -216,8 +305,8 @@ resource "openstack_containerinfra_clustertemplate_v1" "clustertemplate_1" {
   docker_storage_driver = "overlay"
   docker_volume_size    = 10
   external_network_id   = "%s"
-  fixed_network         = "cluster-network2"
-  fixed_subnet          = "cluster-network2-subnet"
+  fixed_network         = openstack_networking_network_v2.cluster_network_2.name
+  fixed_subnet          = openstack_networking_subnet_v2.cluster_subnet_2.name
   flavor                = "%s"
   master_flavor         = "%s"
   floating_ip_enabled   = false
@@ -239,7 +328,7 @@ resource "openstack_containerinfra_clustertemplate_v1" "clustertemplate_1" {
   server_type           = "vm"
   tls_disabled          = "true"
   volume_driver         = "cinder"
-  hidden                = "true"
+  hidden                = "false"
 }
-`, osRegionName, clusterTemplateName, osExtGwID, osMagnumFlavor, osMagnumFlavor, osMagnumImage)
+`, osExtGwID, osExtGwID, osRegionName, clusterTemplateName, osExtGwID, osMagnumFlavor, osMagnumFlavor, osMagnumImage)
 }

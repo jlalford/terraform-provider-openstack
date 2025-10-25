@@ -1,12 +1,13 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccContainerInfraV1NodeGroupDataSource_basic(t *testing.T) {
@@ -18,11 +19,12 @@ func TestAccContainerInfraV1NodeGroupDataSource_basic(t *testing.T) {
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
+			t.Skip("Currently failing in GH-A: cant deploy cluster")
 			testAccPreCheckNonAdminOnly(t)
 			testAccPreCheckContainerInfra(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckContainerInfraV1ClusterDestroy,
+		CheckDestroy:      testAccCheckContainerInfraV1ClusterDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccContainerInfraV1NodeGroupBasic(keypairName, clusterTemplateName, clusterName, nodeGroupName, 1),
@@ -61,7 +63,7 @@ func testAccCheckContainerInfraV1NodeGroupDataSourceID(n string) resource.TestCh
 		}
 
 		if ct.Primary.ID == "" {
-			return fmt.Errorf("Cluster data source ID is not set")
+			return errors.New("Cluster data source ID is not set")
 		}
 
 		return nil
@@ -73,8 +75,8 @@ func testAccContainerInfraV1NodeGroupDataSourceBasic(nodeGroupResource string) s
 %s
 
 data "openstack_containerinfra_nodegroup_v1" "nodegroup_1" {
-  cluster_id = "${openstack_containerinfra_cluster_v1.cluster_1.name}"
-  name = "${openstack_containerinfra_nodegroup_v1.nodegroup_1.name}"
+  cluster_id = openstack_containerinfra_cluster_v1.cluster_1.name
+  name = openstack_containerinfra_nodegroup_v1.nodegroup_1.name
 }
 `, nodeGroupResource)
 }

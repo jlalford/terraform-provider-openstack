@@ -1,12 +1,13 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func zoneName() string {
@@ -49,7 +50,7 @@ func testAccCheckDNSZoneV2DataSourceID(n string) resource.TestCheckFunc {
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("DNS Zone data source ID not set")
+			return errors.New("DNS Zone data source ID not set")
 		}
 
 		return nil
@@ -70,7 +71,7 @@ func testAccOpenStackDNSZoneV2DataSourceBasic(zoneName string) string {
 	return fmt.Sprintf(`
 %s
 data "openstack_dns_zone_v2" "z1" {
-	name = "${openstack_dns_zone_v2.z1.name}"
+	name = openstack_dns_zone_v2.z1.name
 }
 `, testAccOpenStackDNSZoneV2DataSourceZone(zoneName))
 }

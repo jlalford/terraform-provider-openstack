@@ -1,11 +1,12 @@
 package openstack
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccOpenStackNetworkingFloatingIPV2DataSource_address(t *testing.T) {
@@ -49,7 +50,7 @@ func testAccCheckNetworkingFloatingIPV2DataSourceID(n string) resource.TestCheck
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Floating IP data source ID not set")
+			return errors.New("Floating IP data source ID not set")
 		}
 
 		return nil
@@ -74,7 +75,7 @@ func testAccOpenStackNetworkingFloatingIPV2DataSourceAddress() string {
 %s
 
 data "openstack_networking_floatingip_v2" "fip_1" {
-  address = "${openstack_networking_floatingip_v2.fip_1.address}"
+  address = openstack_networking_floatingip_v2.fip_1.address
   description = "test fip"
   tags = [
     "foo",

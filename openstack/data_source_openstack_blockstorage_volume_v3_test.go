@@ -1,17 +1,20 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"regexp"
 	"testing"
+	"time"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/blockstorage/v3/volumes"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/blockstorage/v3/volumes"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccBlockStorageV3VolumeDataSource_basic(t *testing.T) {
@@ -19,12 +22,15 @@ func TestAccBlockStorageV3VolumeDataSource_basic(t *testing.T) {
 	volumeName := acctest.RandomWithPrefix("tf-acc-volume")
 
 	var volumeID string
+
 	if os.Getenv("TF_ACC") != "" {
 		var err error
-		volumeID, err = testAccBlockStorageV3CreateVolume(volumeName)
+
+		volumeID, err = testAccBlockStorageV3CreateVolume(t.Context(), volumeName)
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		defer testAccBlockStorageV3DeleteVolume(t, volumeID)
 	}
 
@@ -47,13 +53,13 @@ func TestAccBlockStorageV3VolumeDataSource_basic(t *testing.T) {
 	})
 }
 
-func testAccBlockStorageV3CreateVolume(volumeName string) (string, error) {
-	config, err := testAccAuthFromEnv()
+func testAccBlockStorageV3CreateVolume(ctx context.Context, volumeName string) (string, error) {
+	config, err := testAccAuthFromEnv(ctx)
 	if err != nil {
 		return "", err
 	}
 
-	bsClient, err := config.BlockStorageV3Client(osRegionName)
+	bsClient, err := config.BlockStorageV3Client(ctx, osRegionName)
 	if err != nil {
 		return "", err
 	}
@@ -63,12 +69,15 @@ func testAccBlockStorageV3CreateVolume(volumeName string) (string, error) {
 		Name: volumeName,
 	}
 
-	volume, err := volumes.Create(bsClient, volCreateOpts).Extract()
+	volume, err := volumes.Create(ctx, bsClient, volCreateOpts, nil).Extract()
 	if err != nil {
 		return "", err
 	}
 
-	err = volumes.WaitForStatus(bsClient, volume.ID, "available", 60)
+	ctx1, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	err = volumes.WaitForStatus(ctx1, bsClient, volume.ID, "available")
 	if err != nil {
 		return "", err
 	}
@@ -77,24 +86,27 @@ func testAccBlockStorageV3CreateVolume(volumeName string) (string, error) {
 }
 
 func testAccBlockStorageV3DeleteVolume(t *testing.T, volumeID string) {
-	config, err := testAccAuthFromEnv()
+	config, err := testAccAuthFromEnv(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	bsClient, err := config.BlockStorageV3Client(osRegionName)
+	bsClient, err := config.BlockStorageV3Client(t.Context(), osRegionName)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = volumes.Delete(bsClient, volumeID, nil).ExtractErr()
+	err = volumes.Delete(t.Context(), bsClient, volumeID, nil).ExtractErr()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = volumes.WaitForStatus(bsClient, volumeID, "DELETED", 60)
+	ctx1, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+
+	err = volumes.WaitForStatus(ctx1, bsClient, volumeID, "DELETED")
 	if err != nil {
-		if _, ok := err.(gophercloud.ErrDefault404); !ok {
+		if !gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
 			t.Fatal(err)
 		}
 	}
@@ -108,7 +120,7 @@ func testAccCheckBlockStorageV3VolumeDataSourceID(n, id string) resource.TestChe
 		}
 
 		if rs.Primary.ID != id {
-			return fmt.Errorf("Volume data source ID not set")
+			return errors.New("Volume data source ID not set")
 		}
 
 		return nil
@@ -132,12 +144,12 @@ func TestAccBlockStorageV3VolumeDataSource_attachment(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckBlockStorageV3VolumeDestroy,
+		CheckDestroy:      testAccCheckBlockStorageV3VolumeDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBlockStorageV3VolumeDataSourceAttachment(),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckBlockStorageV3VolumeExists("data.openstack_blockstorage_volume_v3.volume_1", &dataVolume),
+					testAccCheckBlockStorageV3VolumeExists(t.Context(), "data.openstack_blockstorage_volume_v3.volume_1", &dataVolume),
 					resource.TestCheckResourceAttrPair("data.openstack_blockstorage_volume_v3.volume_1", "attachment", "openstack_blockstorage_volume_v3.volume_1", "attachment"),
 					testAccCheckBlockStorageV3VolumeAttachment(&dataVolume, *regexp.MustCompile(`\/dev\/.dc`)),
 				),
@@ -162,8 +174,8 @@ resource "openstack_compute_instance_v2" "instance_1" {
 }
 
 resource "openstack_compute_volume_attach_v2" "va_1" {
-  instance_id = "${openstack_compute_instance_v2.instance_1.id}"
-  volume_id = "${openstack_blockstorage_volume_v3.volume_1.id}"
+  instance_id = openstack_compute_instance_v2.instance_1.id
+  volume_id = openstack_blockstorage_volume_v3.volume_1.id
   device = "/dev/vdc"
 }
 

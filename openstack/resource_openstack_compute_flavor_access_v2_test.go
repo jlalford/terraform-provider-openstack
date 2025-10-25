@@ -1,25 +1,29 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/projects"
-	"github.com/gophercloud/gophercloud/pagination"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/flavors"
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/projects"
+	"github.com/gophercloud/gophercloud/v2/pagination"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccComputeV2FlavorAccess_basic(t *testing.T) {
 	var flavor flavors.Flavor
-	var flavorName = fmt.Sprintf("ACCPTTEST-%s", acctest.RandString(5))
+
+	flavorName := "ACCPTTEST-" + acctest.RandString(5)
 
 	var project projects.Project
-	var projectName = fmt.Sprintf("ACCPTTEST-%s", acctest.RandString(5))
+
+	projectName := "ACCPTTEST-" + acctest.RandString(5)
 
 	var flavorAccess flavors.FlavorAccess
 
@@ -29,14 +33,14 @@ func TestAccComputeV2FlavorAccess_basic(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckComputeV2FlavorAccessDestroy,
+		CheckDestroy:      testAccCheckComputeV2FlavorAccessDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccComputeV2FlavorAccessBasic(flavorName, projectName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3ProjectExists("openstack_identity_project_v3.project_1", &project),
-					testAccCheckComputeV2FlavorExists("openstack_compute_flavor_v2.flavor_1", &flavor),
-					testAccCheckComputeV2FlavorAccessExists("openstack_compute_flavor_access_v2.access_1", &flavorAccess),
+					testAccCheckIdentityV3ProjectExists(t.Context(), "openstack_identity_project_v3.project_1", &project),
+					testAccCheckComputeV2FlavorExists(t.Context(), "openstack_compute_flavor_v2.flavor_1", &flavor),
+					testAccCheckComputeV2FlavorAccessExists(t.Context(), "openstack_compute_flavor_access_v2.access_1", &flavorAccess),
 					resource.TestCheckResourceAttrPtr(
 						"openstack_compute_flavor_access_v2.access_1", "flavor_id", &flavor.ID),
 					resource.TestCheckResourceAttrPtr(
@@ -47,51 +51,55 @@ func TestAccComputeV2FlavorAccess_basic(t *testing.T) {
 	})
 }
 
-func testAccCheckComputeV2FlavorAccessDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	computeClient, err := config.ComputeV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack compute client: %s", err)
-	}
+func testAccCheckComputeV2FlavorAccessDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_compute_flavor_access_v2" {
-			continue
-		}
-
-		fid, tid, err := parseComputeFlavorAccessID(rs.Primary.ID)
+		computeClient, err := config.ComputeV2Client(ctx, osRegionName)
 		if err != nil {
-			return err
+			return fmt.Errorf("Error creating OpenStack compute client: %w", err)
 		}
 
-		pager := flavors.ListAccesses(computeClient, fid)
-		err = pager.EachPage(func(page pagination.Page) (bool, error) {
-			accessList, err := flavors.ExtractAccesses(page)
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_compute_flavor_access_v2" {
+				continue
+			}
+
+			fid, tid, err := parseComputeFlavorAccessID(rs.Primary.ID)
 			if err != nil {
-				return false, err
+				return err
 			}
 
-			for _, a := range accessList {
-				if a.TenantID == tid {
-					return false, fmt.Errorf("Flavor Access still exists")
+			pager := flavors.ListAccesses(computeClient, fid)
+
+			err = pager.EachPage(ctx, func(_ context.Context, page pagination.Page) (bool, error) {
+				accessList, err := flavors.ExtractAccesses(page)
+				if err != nil {
+					return false, err
 				}
-			}
 
-			return true, nil
-		})
+				for _, a := range accessList {
+					if a.TenantID == tid {
+						return false, errors.New("Flavor Access still exists")
+					}
+				}
 
-		if err != nil {
-			if _, ok := err.(gophercloud.ErrDefault404); ok {
-				return nil
+				return true, nil
+			})
+			if err != nil {
+				if gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
+					return nil
+				}
+
+				return err
 			}
-			return err
 		}
-	}
 
-	return nil
+		return nil
+	}
 }
 
-func testAccCheckComputeV2FlavorAccessExists(n string, access *flavors.FlavorAccess) resource.TestCheckFunc {
+func testAccCheckComputeV2FlavorAccessExists(ctx context.Context, n string, access *flavors.FlavorAccess) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -99,13 +107,14 @@ func testAccCheckComputeV2FlavorAccessExists(n string, access *flavors.FlavorAcc
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		computeClient, err := config.ComputeV2Client(osRegionName)
+
+		computeClient, err := config.ComputeV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack compute client: %s", err)
+			return fmt.Errorf("Error creating OpenStack compute client: %w", err)
 		}
 
 		fid, tid, err := parseComputeFlavorAccessID(rs.Primary.ID)
@@ -114,7 +123,7 @@ func testAccCheckComputeV2FlavorAccessExists(n string, access *flavors.FlavorAcc
 		}
 
 		pager := flavors.ListAccesses(computeClient, fid)
-		err = pager.EachPage(func(page pagination.Page) (bool, error) {
+		err = pager.EachPage(ctx, func(_ context.Context, page pagination.Page) (bool, error) {
 			accessList, err := flavors.ExtractAccesses(page)
 			if err != nil {
 				return false, err
@@ -124,6 +133,7 @@ func testAccCheckComputeV2FlavorAccessExists(n string, access *flavors.FlavorAcc
 				a := acc
 				if a.TenantID == tid {
 					access = &a
+
 					return false, nil
 				}
 			}
@@ -151,8 +161,8 @@ func testAccComputeV2FlavorAccessBasic(flavorName, tenantName string) string {
     }
 
     resource "openstack_compute_flavor_access_v2" "access_1" {
-      flavor_id = "${openstack_compute_flavor_v2.flavor_1.id}"
-      tenant_id = "${openstack_identity_project_v3.project_1.id}"
+      flavor_id = openstack_compute_flavor_v2.flavor_1.id
+      tenant_id = openstack_identity_project_v3.project_1.id
     }
     `, flavorName, tenantName)
 }

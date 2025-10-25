@@ -1,13 +1,14 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/blockstorage/v3/qos"
+	"github.com/gophercloud/gophercloud/v2/openstack/blockstorage/v3/qos"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccBlockStorageQosV3_basic(t *testing.T) {
@@ -19,12 +20,12 @@ func TestAccBlockStorageQosV3_basic(t *testing.T) {
 			testAccPreCheckAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckBlockStorageQosV3Destroy,
+		CheckDestroy:      testAccCheckBlockStorageQosV3Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBlockStorageQosV3Basic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckBlockStorageQosV3Exists("openstack_blockstorage_qos_v3.qos", &qosTest),
+					testAccCheckBlockStorageQosV3Exists(t.Context(), "openstack_blockstorage_qos_v3.qos", &qosTest),
 					resource.TestCheckResourceAttr(
 						"openstack_blockstorage_qos_v3.qos", "name", "foo"),
 					resource.TestCheckResourceAttr(
@@ -38,7 +39,7 @@ func TestAccBlockStorageQosV3_basic(t *testing.T) {
 			{
 				Config: testAccBlockStorageQosV3Update1,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckBlockStorageQosV3Exists("openstack_blockstorage_qos_v3.qos", &qosTest),
+					testAccCheckBlockStorageQosV3Exists(t.Context(), "openstack_blockstorage_qos_v3.qos", &qosTest),
 					resource.TestCheckResourceAttr(
 						"openstack_blockstorage_qos_v3.qos", "name", "foo"),
 					resource.TestCheckResourceAttr(
@@ -54,7 +55,7 @@ func TestAccBlockStorageQosV3_basic(t *testing.T) {
 			{
 				Config: testAccBlockStorageQosV3Update2,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckBlockStorageQosV3Exists("openstack_blockstorage_qos_v3.qos", &qosTest),
+					testAccCheckBlockStorageQosV3Exists(t.Context(), "openstack_blockstorage_qos_v3.qos", &qosTest),
 					resource.TestCheckResourceAttr(
 						"openstack_blockstorage_qos_v3.qos", "name", "foo"),
 					resource.TestCheckResourceAttr(
@@ -67,28 +68,31 @@ func TestAccBlockStorageQosV3_basic(t *testing.T) {
 	})
 }
 
-func testAccCheckBlockStorageQosV3Destroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	blockStorageClient, err := config.BlockStorageV3Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack block storage client: %s", err)
-	}
+func testAccCheckBlockStorageQosV3Destroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_blockstorage_qos_v3" {
-			continue
+		blockStorageClient, err := config.BlockStorageV3Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack block storage client: %w", err)
 		}
 
-		_, err := qos.Get(blockStorageClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("Qos still exists")
-		}
-	}
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_blockstorage_qos_v3" {
+				continue
+			}
 
-	return nil
+			_, err := qos.Get(ctx, blockStorageClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return errors.New("Qos still exists")
+			}
+		}
+
+		return nil
+	}
 }
 
-func testAccCheckBlockStorageQosV3Exists(n string, qosTest *qos.QoS) resource.TestCheckFunc {
+func testAccCheckBlockStorageQosV3Exists(ctx context.Context, n string, qosTest *qos.QoS) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -96,22 +100,23 @@ func testAccCheckBlockStorageQosV3Exists(n string, qosTest *qos.QoS) resource.Te
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		blockStorageClient, err := config.BlockStorageV3Client(osRegionName)
+
+		blockStorageClient, err := config.BlockStorageV3Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack block storage client: %s", err)
+			return fmt.Errorf("Error creating OpenStack block storage client: %w", err)
 		}
 
-		found, err := qos.Get(blockStorageClient, rs.Primary.ID).Extract()
+		found, err := qos.Get(ctx, blockStorageClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Qos not found")
+			return errors.New("Qos not found")
 		}
 
 		*qosTest = *found

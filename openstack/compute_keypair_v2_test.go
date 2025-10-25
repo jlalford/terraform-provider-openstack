@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/keypairs"
+	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/keypairs"
 )
 
 func TestUnitComputeKeyPairV2CreateOpts(t *testing.T) {
@@ -17,8 +17,8 @@ func TestUnitComputeKeyPairV2CreateOpts(t *testing.T) {
 		},
 	}
 
-	expected := map[string]interface{}{
-		"keypair": map[string]interface{}{
+	expected := map[string]any{
+		"keypair": map[string]any{
 			"name": "kp_1",
 			"foo":  "bar",
 		},

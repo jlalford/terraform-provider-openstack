@@ -1,17 +1,20 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/sharedfilesystems/v2/shares"
-	"github.com/gophercloud/gophercloud/openstack/sharedfilesystems/v2/snapshots"
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/sharedfilesystems/v2/shares"
+	"github.com/gophercloud/gophercloud/v2/openstack/sharedfilesystems/v2/snapshots"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccSFSV2SnapshotDataSource_basic(t *testing.T) {
@@ -22,8 +25,10 @@ func TestAccSFSV2SnapshotDataSource_basic(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		shareID = snapshot.ShareID
-		defer testAccSFSV2SnapshotDelete(t, snapshot) //nolint:errcheck
+
+		defer testAccSFSV2SnapshotDelete(t, snapshot)
 	}
 
 	resource.Test(t, resource.TestCase{
@@ -54,11 +59,14 @@ func TestAccSFSV2SnapshotDataSource_basic(t *testing.T) {
 	})
 }
 
-func waitForShareStatus(t *testing.T, c *gophercloud.ServiceClient, id, status string, secs int) error {
-	return gophercloud.WaitFor(secs, func() (bool, error) {
-		current, err := shares.Get(c, id).Extract()
+func waitForShareStatus(ctx context.Context, c *gophercloud.ServiceClient, id, status string, secs int) error {
+	ctx1, cancel := context.WithTimeout(ctx, time.Duration(secs)*time.Second)
+	defer cancel()
+
+	return gophercloud.WaitFor(ctx1, func(ctx1 context.Context) (bool, error) {
+		current, err := shares.Get(ctx1, c, id).Extract()
 		if err != nil {
-			if _, ok := err.(gophercloud.ErrDefault404); ok {
+			if gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
 				switch status {
 				case "deleted":
 					return true, nil
@@ -66,6 +74,7 @@ func waitForShareStatus(t *testing.T, c *gophercloud.ServiceClient, id, status s
 					return false, err
 				}
 			}
+
 			return false, err
 		}
 
@@ -81,11 +90,14 @@ func waitForShareStatus(t *testing.T, c *gophercloud.ServiceClient, id, status s
 	})
 }
 
-func waitForSnapshotStatus(t *testing.T, c *gophercloud.ServiceClient, id, status string, secs int) error {
-	return gophercloud.WaitFor(secs, func() (bool, error) {
-		current, err := snapshots.Get(c, id).Extract()
+func waitForSnapshotStatus(ctx context.Context, c *gophercloud.ServiceClient, id, status string, secs int) error {
+	ctx1, cancel := context.WithTimeout(ctx, time.Duration(secs)*time.Second)
+	defer cancel()
+
+	return gophercloud.WaitFor(ctx1, func(ctx1 context.Context) (bool, error) {
+		current, err := snapshots.Get(ctx1, c, id).Extract()
 		if err != nil {
-			if _, ok := err.(gophercloud.ErrDefault404); ok {
+			if gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
 				switch status {
 				case "deleted":
 					return true, nil
@@ -93,6 +105,7 @@ func waitForSnapshotStatus(t *testing.T, c *gophercloud.ServiceClient, id, statu
 					return false, err
 				}
 			}
+
 			return false, err
 		}
 
@@ -109,12 +122,12 @@ func waitForSnapshotStatus(t *testing.T, c *gophercloud.ServiceClient, id, statu
 }
 
 func testAccSFSV2SnapshotCreate(t *testing.T, snapshotName string) (*snapshots.Snapshot, error) {
-	config, err := testAccAuthFromEnv()
+	config, err := testAccAuthFromEnv(t.Context())
 	if err != nil {
 		return nil, err
 	}
 
-	client, err := config.SharedfilesystemV2Client(osRegionName)
+	client, err := config.SharedfilesystemV2Client(t.Context(), osRegionName)
 	if err != nil {
 		return nil, err
 	}
@@ -126,19 +139,20 @@ func testAccSFSV2SnapshotCreate(t *testing.T, snapshotName string) (*snapshots.S
 		ShareType:  "dhss_false",
 	}
 
-	share, err := shares.Create(client, createShareOpts).Extract()
+	share, err := shares.Create(t.Context(), client, createShareOpts).Extract()
 	if err != nil {
 		return nil, err
 	}
 
 	t.Logf("Share %s created, waiting for 'available' status", share.ID)
 
-	err = waitForShareStatus(t, client, share.ID, "available", 600)
+	err = waitForShareStatus(t.Context(), client, share.ID, "available", 600)
 	if err != nil {
-		nErr := shares.Delete(client, share.ID).ExtractErr()
+		nErr := shares.Delete(t.Context(), client, share.ID).ExtractErr()
 		if nErr != nil {
-			return nil, fmt.Errorf("Unable to get share available status (%s) and Delete:  %s)", err, nErr)
+			return nil, fmt.Errorf("Unable to get share available status (%w) and Delete:  %w)", err, nErr)
 		}
+
 		return nil, err
 	}
 
@@ -147,58 +161,57 @@ func testAccSFSV2SnapshotCreate(t *testing.T, snapshotName string) (*snapshots.S
 		Name:    snapshotName,
 	}
 
-	snapshot, err := snapshots.Create(client, createOpts).Extract()
+	snapshot, err := snapshots.Create(t.Context(), client, createOpts).Extract()
 	if err != nil {
-		nErr := shares.Delete(client, share.ID).ExtractErr()
+		nErr := shares.Delete(t.Context(), client, share.ID).ExtractErr()
 		if nErr != nil {
-			return nil, fmt.Errorf("Unable to create snapshot (%s) and delete share (%s: %s)", err, share.ID, nErr)
+			return nil, fmt.Errorf("Unable to create snapshot (%w) and delete share (%s: %w)", err, share.ID, nErr)
 		}
+
 		return nil, err
 	}
 
 	t.Logf("Snapshot %s created, waiting for 'available' status", snapshot.ID)
 
-	if err := waitForSnapshotStatus(t, client, snapshot.ID, "available", 600); err != nil {
-		t.Logf("%s", err)
+	if err := waitForSnapshotStatus(t.Context(), client, snapshot.ID, "available", 600); err != nil {
+		return nil, err
 	}
 
 	return snapshot, nil
 }
 
-func testAccSFSV2SnapshotDelete(t *testing.T, snapshot *snapshots.Snapshot) error {
-	config, err := testAccAuthFromEnv()
+func testAccSFSV2SnapshotDelete(t *testing.T, snapshot *snapshots.Snapshot) {
+	config, err := testAccAuthFromEnv(t.Context())
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 
-	client, err := config.SharedfilesystemV2Client(osRegionName)
+	client, err := config.SharedfilesystemV2Client(t.Context(), osRegionName)
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 
-	err = snapshots.Delete(client, snapshot.ID).ExtractErr()
+	err = snapshots.Delete(t.Context(), client, snapshot.ID).ExtractErr()
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 
-	if err := waitForSnapshotStatus(t, client, snapshot.ID, "deleted", 600); err != nil {
-		t.Logf("%s", err)
+	if err := waitForSnapshotStatus(t.Context(), client, snapshot.ID, "deleted", 600); err != nil {
+		t.Fatal(err)
 	}
 
 	t.Logf("Snapshot %s deleted", snapshot.ID)
 
-	err = shares.Delete(client, snapshot.ShareID).ExtractErr()
+	err = shares.Delete(t.Context(), client, snapshot.ShareID).ExtractErr()
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 
-	if err := waitForShareStatus(t, client, snapshot.ShareID, "deleted", 600); err != nil {
-		t.Logf("%s", err)
+	if err := waitForShareStatus(t.Context(), client, snapshot.ShareID, "deleted", 600); err != nil {
+		t.Fatal(err)
 	}
 
 	t.Logf("Share %s deleted", snapshot.ShareID)
-
-	return nil
 }
 
 func testAccCheckSFSV2SnapshotDataSourceID(n string) resource.TestCheckFunc {
@@ -209,7 +222,7 @@ func testAccCheckSFSV2SnapshotDataSourceID(n string) resource.TestCheckFunc {
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("Snapshot data source ID not set")
+			return errors.New("Snapshot data source ID not set")
 		}
 
 		return nil

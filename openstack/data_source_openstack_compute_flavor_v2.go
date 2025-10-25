@@ -3,13 +3,13 @@ package openstack
 import (
 	"context"
 	"log"
+	"net/http"
 
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/flavors"
+	"github.com/gophercloud/gophercloud/v2/pagination"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
-	"github.com/gophercloud/gophercloud/pagination"
 )
 
 func dataSourceComputeFlavorV2() *schema.Resource {
@@ -21,7 +21,6 @@ func dataSourceComputeFlavorV2() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
-				ForceNew: true,
 			},
 
 			"flavor_id": {
@@ -104,27 +103,31 @@ func dataSourceComputeFlavorV2() *schema.Resource {
 }
 
 // dataSourceComputeFlavorV2Read performs the flavor lookup.
-func dataSourceComputeFlavorV2Read(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func dataSourceComputeFlavorV2Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	computeClient, err := config.ComputeV2Client(GetRegion(d, config))
+
+	computeClient, err := config.ComputeV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack compute client: %s", err)
 	}
 
 	var allFlavors []flavors.Flavor
+
 	if v := d.Get("flavor_id").(string); v != "" {
 		var flavor *flavors.Flavor
 		// try and read flavor using microversion that includes description
 		computeClient.Microversion = computeV2FlavorDescriptionMicroversion
-		flavor, err = flavors.Get(computeClient, v).Extract()
+		flavor, err = flavors.Get(ctx, computeClient, v).Extract()
 		if err != nil {
 			// reset microversion to 2.1 and try again
 			computeClient.Microversion = "2.1"
-			flavor, err = flavors.Get(computeClient, v).Extract()
+
+			flavor, err = flavors.Get(ctx, computeClient, v).Extract()
 			if err != nil {
-				if _, ok := err.(gophercloud.ErrDefault404); ok {
+				if gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
 					return diag.Errorf("No Flavor found")
 				}
+
 				return diag.Errorf("Unable to retrieve OpenStack %s flavor: %s", v, err)
 			}
 		}
@@ -132,7 +135,8 @@ func dataSourceComputeFlavorV2Read(ctx context.Context, d *schema.ResourceData, 
 		allFlavors = append(allFlavors, *flavor)
 	} else {
 		accessType := flavors.AllAccess
-		if v, ok := d.GetOkExists("is_public"); ok {
+
+		if v, ok := getOkExists(d, "is_public"); ok {
 			if v, ok := v.(bool); ok {
 				if v {
 					accessType = flavors.PublicAccess
@@ -141,6 +145,7 @@ func dataSourceComputeFlavorV2Read(ctx context.Context, d *schema.ResourceData, 
 				}
 			}
 		}
+
 		listOpts := flavors.ListOpts{
 			MinDisk:    d.Get("min_disk").(int),
 			MinRAM:     d.Get("min_ram").(int),
@@ -152,11 +157,12 @@ func dataSourceComputeFlavorV2Read(ctx context.Context, d *schema.ResourceData, 
 		var allPages pagination.Page
 		// try and read flavor using microversion that includes description
 		computeClient.Microversion = computeV2FlavorDescriptionMicroversion
-		allPages, err = flavors.ListDetail(computeClient, listOpts).AllPages()
+		allPages, err = flavors.ListDetail(computeClient, listOpts).AllPages(ctx)
 		if err != nil {
 			// reset microversion to 2.1 and try again
 			computeClient.Microversion = "2.1"
-			allPages, err = flavors.ListDetail(computeClient, listOpts).AllPages()
+
+			allPages, err = flavors.ListDetail(computeClient, listOpts).AllPages(ctx)
 			if err != nil {
 				return diag.Errorf("Unable to query OpenStack flavors: %s", err)
 			}
@@ -171,6 +177,7 @@ func dataSourceComputeFlavorV2Read(ctx context.Context, d *schema.ResourceData, 
 	// Loop through all flavors to find a more specific one.
 	if len(allFlavors) > 0 {
 		var filteredFlavors []flavors.Flavor
+
 		for _, flavor := range allFlavors {
 			if v := d.Get("name").(string); v != "" {
 				if flavor.Name != v {
@@ -228,15 +235,23 @@ func dataSourceComputeFlavorV2Read(ctx context.Context, d *schema.ResourceData, 
 
 	if len(allFlavors) > 1 {
 		log.Printf("[DEBUG] Multiple results found: %#v", allFlavors)
+
 		return diag.Errorf("Your query returned more than one result. " +
 			"Please try a more specific search criteria")
 	}
 
-	return diag.FromErr(dataSourceComputeFlavorV2Attributes(d, computeClient, &allFlavors[0]))
+	err = dataSourceComputeFlavorV2Attributes(ctx, d, computeClient, &allFlavors[0])
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	d.Set("region", GetRegion(d, config))
+
+	return nil
 }
 
 // dataSourceComputeFlavorV2Attributes populates the fields of a Flavor resource.
-func dataSourceComputeFlavorV2Attributes(d *schema.ResourceData, computeClient *gophercloud.ServiceClient, flavor *flavors.Flavor) error {
+func dataSourceComputeFlavorV2Attributes(ctx context.Context, d *schema.ResourceData, computeClient *gophercloud.ServiceClient, flavor *flavors.Flavor) error {
 	log.Printf("[DEBUG] Retrieved openstack_compute_flavor_v2 %s: %#v", flavor.ID, flavor)
 
 	d.SetId(flavor.ID)
@@ -250,7 +265,7 @@ func dataSourceComputeFlavorV2Attributes(d *schema.ResourceData, computeClient *
 	d.Set("vcpus", flavor.VCPUs)
 	d.Set("is_public", flavor.IsPublic)
 
-	es, err := flavors.ListExtraSpecs(computeClient, d.Id()).Extract()
+	es, err := flavors.ListExtraSpecs(ctx, computeClient, d.Id()).Extract()
 	if err != nil {
 		return err
 	}

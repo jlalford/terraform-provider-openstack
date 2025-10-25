@@ -4,13 +4,12 @@ import (
 	"context"
 	"log"
 
+	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/fwaas_v2/policies"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/fwaas_v2/rules"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-
-	"github.com/gophercloud/gophercloud"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/fwaas_v2/policies"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/fwaas_v2/rules"
 )
 
 func resourceFWRuleV2() *schema.Resource {
@@ -120,9 +119,10 @@ func resourceFWRuleV2() *schema.Resource {
 	}
 }
 
-func resourceFWRuleV2Create(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceFWRuleV2Create(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
@@ -153,7 +153,7 @@ func resourceFWRuleV2Create(ctx context.Context, d *schema.ResourceData, meta in
 
 	log.Printf("[DEBUG] openstack_fw_rule_v2 create options: %#v", ruleCreateOpts)
 
-	rule, err := rules.Create(networkingClient, ruleCreateOpts).Extract()
+	rule, err := rules.Create(ctx, networkingClient, ruleCreateOpts).Extract()
 	if err != nil {
 		return diag.Errorf("Error creating openstack_fw_rule_v2: %s", err)
 	}
@@ -165,14 +165,15 @@ func resourceFWRuleV2Create(ctx context.Context, d *schema.ResourceData, meta in
 	return resourceFWRuleV2Read(ctx, d, meta)
 }
 
-func resourceFWRuleV2Read(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceFWRuleV2Read(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
 
-	rule, err := rules.Get(networkingClient, d.Id()).Extract()
+	rule, err := rules.Get(ctx, networkingClient, d.Id()).Extract()
 	if err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "Error retrieving openstack_fw_rule_v2"))
 	}
@@ -203,9 +204,10 @@ func resourceFWRuleV2Read(_ context.Context, d *schema.ResourceData, meta interf
 	return nil
 }
 
-func resourceFWRuleV2Update(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceFWRuleV2Update(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
@@ -257,10 +259,12 @@ func resourceFWRuleV2Update(ctx context.Context, d *schema.ResourceData, meta in
 
 	if d.HasChange("source_port") {
 		hasChange = true
+
 		sourcePort := d.Get("source_port").(string)
 		if sourcePort == "" {
 			sourcePort = "0"
 		}
+
 		updateOpts.SourcePort = &sourcePort
 
 		// Also include the protocol.
@@ -280,6 +284,7 @@ func resourceFWRuleV2Update(ctx context.Context, d *schema.ResourceData, meta in
 
 	if d.HasChange("destination_port") {
 		hasChange = true
+
 		destinationPort := d.Get("destination_port").(string)
 		if destinationPort == "" {
 			destinationPort = "0"
@@ -307,7 +312,7 @@ func resourceFWRuleV2Update(ctx context.Context, d *schema.ResourceData, meta in
 	if hasChange {
 		log.Printf("[DEBUG] openstack_fw_rule_v2 %s update options: %#v", d.Id(), updateOpts)
 
-		_, err = rules.Update(networkingClient, d.Id(), updateOpts).Extract()
+		_, err = rules.Update(ctx, networkingClient, d.Id(), updateOpts).Extract()
 		if err != nil {
 			return diag.Errorf("Error updating openstack_fw_rule_v2 %s: %s", d.Id(), err)
 		}
@@ -316,14 +321,15 @@ func resourceFWRuleV2Update(ctx context.Context, d *schema.ResourceData, meta in
 	return resourceFWRuleV2Read(ctx, d, meta)
 }
 
-func resourceFWRuleV2Delete(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceFWRuleV2Delete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
 	config := meta.(*Config)
-	networkingClient, err := config.NetworkingV2Client(GetRegion(d, config))
+
+	networkingClient, err := config.NetworkingV2Client(ctx, GetRegion(d, config))
 	if err != nil {
 		return diag.Errorf("Error creating OpenStack networking client: %s", err)
 	}
 
-	rule, err := rules.Get(networkingClient, d.Id()).Extract()
+	rule, err := rules.Get(ctx, networkingClient, d.Id()).Extract()
 	if err != nil {
 		return diag.FromErr(CheckDeleted(d, err, "Error retrieving openstack_fw_rule_v2"))
 	}
@@ -331,16 +337,17 @@ func resourceFWRuleV2Delete(_ context.Context, d *schema.ResourceData, meta inte
 	if len(rule.FirewallPolicyID) > 0 {
 		for _, firewallPolicyID := range rule.FirewallPolicyID {
 			log.Printf("[DEBUG] openstack_fw_rule_v2 %s associate with openstack_fw_policy_v2: %#v", d.Id(), firewallPolicyID)
-			_, err := policies.RemoveRule(networkingClient, firewallPolicyID, rule.ID).Extract()
-			if err != nil {
+
+			_, err := policies.RemoveRule(ctx, networkingClient, firewallPolicyID, rule.ID).Extract()
+			if err != nil && CheckDeleted(d, err, "") != nil {
 				return diag.Errorf("Error removing openstack_fw_rule_v2 %s from policy %s: %s", d.Id(), firewallPolicyID, err)
 			}
 		}
 	}
 
-	err = rules.Delete(networkingClient, d.Id()).ExtractErr()
+	err = rules.Delete(ctx, networkingClient, d.Id()).ExtractErr()
 	if err != nil {
-		return diag.Errorf("Error deleting openstack_fw_rule_v2 %s: %s", d.Id(), err)
+		return diag.FromErr(CheckDeleted(d, err, "Error deleting openstack_fw_rule_v2"))
 	}
 
 	return nil

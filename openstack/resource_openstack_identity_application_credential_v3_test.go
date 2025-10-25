@@ -1,16 +1,17 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"regexp"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/applicationcredentials"
-	"github.com/gophercloud/gophercloud/openstack/identity/v3/tokens"
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/applicationcredentials"
+	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/tokens"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccIdentityV3ApplicationCredential_basic(t *testing.T) {
@@ -22,12 +23,12 @@ func TestAccIdentityV3ApplicationCredential_basic(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIdentityV3ApplicationCredentialDestroy,
+		CheckDestroy:      testAccCheckIdentityV3ApplicationCredentialDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIdentityV3ApplicationCredentialBasic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3ApplicationCredentialExists("openstack_identity_application_credential_v3.app_cred_1", &applicationCredential),
+					testAccCheckIdentityV3ApplicationCredentialExists(t.Context(), "openstack_identity_application_credential_v3.app_cred_1", &applicationCredential),
 					resource.TestCheckResourceAttrPtr(
 						"openstack_identity_application_credential_v3.app_cred_1", "name", &applicationCredential.Name),
 					resource.TestCheckResourceAttrPtr(
@@ -42,13 +43,13 @@ func TestAccIdentityV3ApplicationCredential_basic(t *testing.T) {
 						"openstack_identity_application_credential_v3.app_cred_1", "expires_at", "2219-02-13T12:12:12Z"),
 					resource.TestCheckResourceAttr(
 						"openstack_identity_application_credential_v3.app_cred_1", "roles.#", "1"),
-					testAccCheckIdentityV3ApplicationCredentialRoleNameExists("reader", &applicationCredential),
+					testAccCheckIdentityV3ApplicationCredentialRoleNameExists(t.Context(), "reader", &applicationCredential),
 				),
 			},
 			{
 				Config: testAccIdentityV3ApplicationCredentialCustomSecret,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3ApplicationCredentialExists("openstack_identity_application_credential_v3.app_cred_1", &applicationCredential),
+					testAccCheckIdentityV3ApplicationCredentialExists(t.Context(), "openstack_identity_application_credential_v3.app_cred_1", &applicationCredential),
 					resource.TestCheckResourceAttrPtr(
 						"openstack_identity_application_credential_v3.app_cred_1", "name", &applicationCredential.Name),
 					resource.TestCheckResourceAttrPtr(
@@ -78,13 +79,13 @@ func TestAccIdentityV3ApplicationCredential_access_rules(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckIdentityV3ApplicationCredentialDestroy,
+		CheckDestroy:      testAccCheckIdentityV3ApplicationCredentialDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccIdentityV3ApplicationCredentialAccessRules,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckIdentityV3ApplicationCredentialExists("openstack_identity_application_credential_v3.app_cred_1", &ac1),
-					testAccCheckIdentityV3ApplicationCredentialExists("openstack_identity_application_credential_v3.app_cred_1", &ac2),
+					testAccCheckIdentityV3ApplicationCredentialExists(t.Context(), "openstack_identity_application_credential_v3.app_cred_1", &ac1),
+					testAccCheckIdentityV3ApplicationCredentialExists(t.Context(), "openstack_identity_application_credential_v3.app_cred_1", &ac2),
 					resource.TestCheckResourceAttrPtr(
 						"openstack_identity_application_credential_v3.app_cred_1", "name", &ac1.Name),
 					resource.TestCheckResourceAttrPtr(
@@ -108,55 +109,16 @@ func TestAccIdentityV3ApplicationCredential_access_rules(t *testing.T) {
 	})
 }
 
-func testAccCheckIdentityV3ApplicationCredentialDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	identityClient, err := config.IdentityV3Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack identity client: %s", err)
-	}
-
-	token := tokens.Get(identityClient, config.OsClient.TokenID)
-	if token.Err != nil {
-		return token.Err
-	}
-
-	user, err := token.ExtractUser()
-	if err != nil {
-		return err
-	}
-
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_identity_application_credential_v3" {
-			continue
-		}
-
-		_, err := applicationcredentials.Get(identityClient, user.ID, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("ApplicationCredential still exists")
-		}
-	}
-
-	return nil
-}
-
-func testAccCheckIdentityV3ApplicationCredentialExists(n string, applicationCredential *applicationcredentials.ApplicationCredential) resource.TestCheckFunc {
+func testAccCheckIdentityV3ApplicationCredentialDestroy(ctx context.Context) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
-		rs, ok := s.RootModule().Resources[n]
-		if !ok {
-			return fmt.Errorf("Not found: %s", n)
-		}
-
-		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
-		}
-
 		config := testAccProvider.Meta().(*Config)
-		identityClient, err := config.IdentityV3Client(osRegionName)
+
+		identityClient, err := config.IdentityV3Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack identity client: %s", err)
+			return fmt.Errorf("Error creating OpenStack identity client: %w", err)
 		}
 
-		token := tokens.Get(identityClient, config.OsClient.TokenID)
+		token := tokens.Get(ctx, identityClient, config.OsClient.TokenID)
 		if token.Err != nil {
 			return token.Err
 		}
@@ -166,13 +128,56 @@ func testAccCheckIdentityV3ApplicationCredentialExists(n string, applicationCred
 			return err
 		}
 
-		found, err := applicationcredentials.Get(identityClient, user.ID, rs.Primary.ID).Extract()
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_identity_application_credential_v3" {
+				continue
+			}
+
+			_, err := applicationcredentials.Get(ctx, identityClient, user.ID, rs.Primary.ID).Extract()
+			if err == nil {
+				return errors.New("ApplicationCredential still exists")
+			}
+		}
+
+		return nil
+	}
+}
+
+func testAccCheckIdentityV3ApplicationCredentialExists(ctx context.Context, n string, applicationCredential *applicationcredentials.ApplicationCredential) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[n]
+		if !ok {
+			return fmt.Errorf("Not found: %s", n)
+		}
+
+		if rs.Primary.ID == "" {
+			return errors.New("No ID is set")
+		}
+
+		config := testAccProvider.Meta().(*Config)
+
+		identityClient, err := config.IdentityV3Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack identity client: %w", err)
+		}
+
+		token := tokens.Get(ctx, identityClient, config.OsClient.TokenID)
+		if token.Err != nil {
+			return token.Err
+		}
+
+		user, err := token.ExtractUser()
+		if err != nil {
+			return err
+		}
+
+		found, err := applicationcredentials.Get(ctx, identityClient, user.ID, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("ApplicationCredential not found")
+			return errors.New("ApplicationCredential not found")
 		}
 
 		*applicationCredential = *found
@@ -181,22 +186,25 @@ func testAccCheckIdentityV3ApplicationCredentialExists(n string, applicationCred
 	}
 }
 
-func testAccCheckIdentityV3ApplicationCredentialRoleNameExists(role string, applicationCredential *applicationcredentials.ApplicationCredential) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
+func testAccCheckIdentityV3ApplicationCredentialRoleNameExists(_ context.Context, role string, applicationCredential *applicationcredentials.ApplicationCredential) resource.TestCheckFunc {
+	return func(_ *terraform.State) error {
 		roles := flattenIdentityApplicationCredentialRolesV3(applicationCredential.Roles)
+
 		exists := strSliceContains(roles, role)
 		if exists {
 			return nil
 		}
+
 		return fmt.Errorf("The %s role was not found in %+q", role, roles)
 	}
 }
 
 func testAccCheckIdentityV3ApplicationCredentialAccessRulesEqual(ac1, ac2 *applicationcredentials.ApplicationCredential) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
+	return func(_ *terraform.State) error {
 		if !reflect.DeepEqual(ac1.AccessRules, ac2.AccessRules) {
 			return fmt.Errorf("AccessRules are not equal: %v != %v", ac1.AccessRules, ac2.AccessRules)
 		}
+
 		return nil
 	}
 }
@@ -258,9 +266,9 @@ resource "openstack_identity_application_credential_v3" "app_cred_2" {
     }]
 
     content {
-      path = "${access_rules.value.path}"
-      service = "${access_rules.value.service}"
-      method = "${access_rules.value.method}"
+      path = access_rules.value.path
+      service = access_rules.value.service
+      method = access_rules.value.method
     }
   }
 }

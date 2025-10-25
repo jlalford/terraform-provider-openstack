@@ -50,6 +50,8 @@ are exported:
 
 * `external_network_id` - The network UUID of an external gateway for the router.
 
+* `external_qos_policy_id` - The QoS policy UUID applied on the external gateway for the router.
+
 * `availability_zone_hints` - The availability zone that is used to make router resources highly available.
 
 * `external_fixed_ip` - The external fixed IPs of the router.
@@ -59,5 +61,7 @@ The `external_fixed_ip` block supports:
 * `subnet_id`- Subnet in which the fixed IP belongs to.
 
 * `ip_address` - The IP address to set on the router.
+
+* `routes` - The list of static routes set on the router.
 
 * `all_tags` - The set of string tags applied on the router.

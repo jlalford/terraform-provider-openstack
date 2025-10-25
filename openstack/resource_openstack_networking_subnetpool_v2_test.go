@@ -1,13 +1,14 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/subnetpools"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/subnetpools"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccNetworkingV2SubnetPool_Basic(t *testing.T) {
@@ -19,12 +20,12 @@ func TestAccNetworkingV2SubnetPool_Basic(t *testing.T) {
 			testAccPreCheckNonAdminOnly(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckNetworkingV2SubnetPoolDestroy,
+		CheckDestroy:      testAccCheckNetworkingV2SubnetPoolDestroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccNetworkingV2SubnetPoolBasic,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckNetworkingV2SubnetPoolExists("openstack_networking_subnetpool_v2.subnetpool_1", &subnetPool),
+					testAccCheckNetworkingV2SubnetPoolExists(t.Context(), "openstack_networking_subnetpool_v2.subnetpool_1", &subnetPool),
 					testAccCheckNetworkingV2SubnetPoolPrefixesConsistency("openstack_networking_subnetpool_v2.subnetpool_1", &subnetPool),
 				),
 			},
@@ -66,7 +67,7 @@ func TestAccNetworkingV2SubnetPool_Basic(t *testing.T) {
 	})
 }
 
-func testAccCheckNetworkingV2SubnetPoolExists(n string, subnetPool *subnetpools.SubnetPool) resource.TestCheckFunc {
+func testAccCheckNetworkingV2SubnetPoolExists(ctx context.Context, n string, subnetPool *subnetpools.SubnetPool) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -74,22 +75,23 @@ func testAccCheckNetworkingV2SubnetPoolExists(n string, subnetPool *subnetpools.
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		config := testAccProvider.Meta().(*Config)
-		networkingClient, err := config.NetworkingV2Client(osRegionName)
+
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
 		if err != nil {
-			return fmt.Errorf("Error creating OpenStack networking client: %s", err)
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
 		}
 
-		found, err := subnetpools.Get(networkingClient, rs.Primary.ID).Extract()
+		found, err := subnetpools.Get(ctx, networkingClient, rs.Primary.ID).Extract()
 		if err != nil {
 			return err
 		}
 
 		if found.ID != rs.Primary.ID {
-			return fmt.Errorf("Subnetpool not found")
+			return errors.New("Subnetpool not found")
 		}
 
 		*subnetPool = *found
@@ -98,25 +100,28 @@ func testAccCheckNetworkingV2SubnetPoolExists(n string, subnetPool *subnetpools.
 	}
 }
 
-func testAccCheckNetworkingV2SubnetPoolDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-	networkingClient, err := config.NetworkingV2Client(osRegionName)
-	if err != nil {
-		return fmt.Errorf("Error creating OpenStack networking client: %s", err)
-	}
+func testAccCheckNetworkingV2SubnetPoolDestroy(ctx context.Context) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		config := testAccProvider.Meta().(*Config)
 
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "openstack_networking_subnetpool_v2" {
-			continue
+		networkingClient, err := config.NetworkingV2Client(ctx, osRegionName)
+		if err != nil {
+			return fmt.Errorf("Error creating OpenStack networking client: %w", err)
 		}
 
-		_, err := subnetpools.Get(networkingClient, rs.Primary.ID).Extract()
-		if err == nil {
-			return fmt.Errorf("Subnetpool still exists")
-		}
-	}
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "openstack_networking_subnetpool_v2" {
+				continue
+			}
 
-	return nil
+			_, err := subnetpools.Get(ctx, networkingClient, rs.Primary.ID).Extract()
+			if err == nil {
+				return errors.New("Subnetpool still exists")
+			}
+		}
+
+		return nil
+	}
 }
 
 func testAccCheckNetworkingV2SubnetPoolPrefixesConsistency(n string, subnetpool *subnetpools.SubnetPool) resource.TestCheckFunc {
@@ -127,12 +132,12 @@ func testAccCheckNetworkingV2SubnetPoolPrefixesConsistency(n string, subnetpool 
 		}
 
 		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
+			return errors.New("No ID is set")
 		}
 
 		for i, prefix := range subnetpool.Prefixes {
 			if prefix != rs.Primary.Attributes[fmt.Sprintf("prefixes.%d", i)] {
-				return fmt.Errorf("prefixes list elements or order is not consistent")
+				return errors.New("prefixes list elements or order is not consistent")
 			}
 		}
 

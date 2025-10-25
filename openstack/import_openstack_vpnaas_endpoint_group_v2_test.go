@@ -3,10 +3,10 @@ package openstack
 import (
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func TestAccEndpointGroup_importBasic(t *testing.T) {
+func TestAccVPNaaSV2EndpointGroup_importBasic(t *testing.T) {
 	resourceName := "openstack_vpnaas_endpoint_group_v2.group_1"
 
 	resource.Test(t, resource.TestCase{
@@ -16,7 +16,7 @@ func TestAccEndpointGroup_importBasic(t *testing.T) {
 			testAccPreCheckVPN(t)
 		},
 		ProviderFactories: testAccProviders,
-		CheckDestroy:      testAccCheckEndpointGroupV2Destroy,
+		CheckDestroy:      testAccCheckEndpointGroupV2Destroy(t.Context()),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccEndpointGroupV2Basic,
